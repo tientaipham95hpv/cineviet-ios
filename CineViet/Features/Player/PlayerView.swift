@@ -6,6 +6,8 @@ struct PlayerView: View {
     @StateObject private var viewModel: PlayerViewModel
     @State private var controlsVisible = true
     @State private var pictureInPictureRequestID = 0
+    @State private var controlsLocked = false
+    @State private var hideTask: Task<Void, Never>?
     let servers: [EpisodeServer]
 
     init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing) {
@@ -18,8 +20,8 @@ struct PlayerView: View {
             .ignoresSafeArea()
         .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar).hidesFloatingNavigation()
-        .onAppear { OrientationManager.landscape(); viewModel.start() }
-        .onDisappear { viewModel.stop(); OrientationManager.portrait() }
+        .onAppear { OrientationManager.landscape(); viewModel.start(); scheduleControlsHide() }
+        .onDisappear { hideTask?.cancel(); viewModel.stop(); OrientationManager.portrait() }
     }
 
     private var cinematicPlayer: some View {
@@ -31,14 +33,14 @@ struct PlayerView: View {
             loadingAndError
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle()).onTapGesture { withAnimation(.easeInOut(duration: 0.18)) { controlsVisible.toggle() } }
+        .contentShape(Rectangle()).onTapGesture { guard !controlsLocked else { return }; withAnimation(.easeInOut(duration: 0.18)) { controlsVisible.toggle() }; if controlsVisible { scheduleControlsHide() } }
     }
 
     private var playerOverlay: some View {
         VStack {
             HStack {
                 Button { OrientationManager.portrait(); dismiss() } label: { controlIcon("chevron.left") }
-                Button { pictureInPictureRequestID += 1 } label: { controlIcon("pip.enter") }.accessibilityLabel("Hình trong hình")
+                Button { controlsLocked.toggle(); controlsVisible = true; controlsLocked ? hideTask?.cancel() : scheduleControlsHide() } label: { controlIcon(controlsLocked ? "lock.fill" : "lock.open") }.accessibilityLabel("Khóa điều khiển")
                 VStack(alignment: .leading, spacing: 2) { Text(viewModel.movie.title).font(.subheadline.bold()).lineLimit(1); Text("\(viewModel.currentServer.name) • \(viewModel.currentEpisode.name)").font(.caption).foregroundStyle(.white.opacity(0.72)).lineLimit(1) }
                 Spacer()
                 AirPlayButton().frame(width: 34, height: 34)
@@ -47,7 +49,7 @@ struct PlayerView: View {
             Spacer()
             HStack(spacing: 42) {
                 Button { viewModel.skip(-10) } label: { Image(systemName: "gobackward.10").font(.title) }
-                Button { viewModel.togglePlayback() } label: { Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 34, weight: .bold)).frame(width: 68, height: 68).background(.white.opacity(0.94), in: Circle()).foregroundStyle(.black) }
+                Button { viewModel.togglePlayback(); scheduleControlsHide() } label: { Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 34, weight: .bold)).frame(width: 68, height: 68).background(.white.opacity(0.94), in: Circle()).foregroundStyle(.black) }
                 Button { viewModel.skip(10) } label: { Image(systemName: "goforward.10").font(.title) }
             }
             Spacer()
@@ -73,11 +75,17 @@ struct PlayerView: View {
     @ViewBuilder private var loadingAndError: some View {
         if viewModel.isLoading { ProgressView().controlSize(.large).tint(CineVietTheme.accent) }
         if viewModel.isBuffering && !viewModel.isLoading { ProgressView().tint(CineVietTheme.accent) }
-        if let message = viewModel.errorMessage { VStack(spacing: 10) { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(CineVietTheme.accent); Text(message).font(.subheadline).multilineTextAlignment(.center); Button("Thử lại") { viewModel.start() }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black) }.padding(18).background(.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 16)).padding() }
+        if let message = viewModel.errorMessage { VStack(spacing: 10) { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(CineVietTheme.accent); Text(message).font(.subheadline).multilineTextAlignment(.center); Button("Thử lại") { viewModel.retry() }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black) }.padding(18).background(.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 16)).padding() }
     }
 
     private var audioMenu: some View { Menu { if viewModel.availableAudio.isEmpty { Text("Theo nguồn M3U8") } else { ForEach(viewModel.availableAudio) { source in Button(source.label.isEmpty ? source.key : source.label) { viewModel.selectAudio(source) } } } } label: { Label("Âm thanh", systemImage: "speaker.wave.2.fill").optionChip() } }
-    private var subtitleMenu: some View { Menu { Button("Tắt") { viewModel.selectSubtitle("off") }; ForEach(viewModel.availableSubtitles) { subtitle in Button(subtitle.label.isEmpty ? subtitle.lang : subtitle.label) { viewModel.selectSubtitle(subtitle.lang) } } } label: { Label("Phụ đề", systemImage: "captions.bubble.fill").optionChip() } }
+    private var subtitleMenu: some View { Menu { Button("Tắt") { viewModel.selectSubtitle("off") }; if viewModel.availableSubtitles.contains(where: { $0.lang.lowercased().hasPrefix("vi") }) && viewModel.availableSubtitles.contains(where: { $0.lang.lowercased().hasPrefix("en") }) { Button("Song ngữ Việt + Anh") { viewModel.selectSubtitle("dual") } }; ForEach(viewModel.availableSubtitles) { subtitle in Button(subtitle.label.isEmpty ? subtitle.lang : subtitle.label) { viewModel.selectSubtitle(subtitle.lang) } } } label: { Label("Phụ đề", systemImage: "captions.bubble.fill").optionChip() } }
+
+    private func scheduleControlsHide() {
+        hideTask?.cancel()
+        guard !controlsLocked else { return }
+        hideTask = Task { try? await Task.sleep(nanoseconds: 4_000_000_000); guard !Task.isCancelled else { return }; await MainActor.run { withAnimation { controlsVisible = false } } }
+    }
     private func optionMenu(_ title: String, _ icon: String, _ values: [String], selected: String, action: @escaping (String) -> Void) -> some View { Menu { ForEach(values, id: \.self) { value in Button { action(value) } label: { if value == selected { Label(value, systemImage: "checkmark") } else { Text(value) } } } } label: { Label(title, systemImage: icon).optionChip() } }
     private func controlIcon(_ name: String) -> some View { Image(systemName: name).font(.headline).frame(width: 38, height: 38).background(.black.opacity(0.55), in: Circle()) }
     private func time(_ seconds: Double) -> String { let value = max(0, Int(seconds.isFinite ? seconds : 0)); return String(format: "%02d:%02d", value / 60, value % 60) }

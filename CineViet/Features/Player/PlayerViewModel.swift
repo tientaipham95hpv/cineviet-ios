@@ -16,6 +16,7 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published var playbackPosition: Double = 0
     @Published private(set) var playbackDuration: Double = 1
+    @Published private(set) var playbackNotice: String?
     @Published var isAutoPlayEnabled: Bool {
         didSet { defaults.set(isAutoPlayEnabled, forKey: autoPlayPreferenceKey) }
     }
@@ -31,6 +32,8 @@ final class PlayerViewModel: ObservableObject {
     private var resumeTask: Task<Void, Never>?
     private var playbackEndObserver: NSObjectProtocol?
     private var controlsTimeObserver: Any?
+    private var itemFailureObserver: NSObjectProtocol?
+    private var pendingResumePosition: Double?
     private let defaults: UserDefaults
     private let watchHistoryService: WatchHistoryServicing
     private var lastSavedPosition: Double = 0
@@ -68,6 +71,7 @@ final class PlayerViewModel: ObservableObject {
         subtitleTask?.cancel()
         resumeTask?.cancel()
         if let playbackEndObserver { NotificationCenter.default.removeObserver(playbackEndObserver) }
+        if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver) }
     }
 
     func start() {
@@ -93,6 +97,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func play(_ episode: EpisodeItem, server: EpisodeServer) {
+        saveProgress()
         currentEpisode = episode
         currentServer = server
         persistPlaybackSelection()
@@ -131,6 +136,15 @@ final class PlayerViewModel: ObservableObject {
 
     func skip(_ seconds: Double) { seek(to: playbackPosition + seconds) }
 
+    func retry() {
+        pendingResumePosition = playbackPosition > 3 ? playbackPosition : nil
+        load(currentEpisode, server: currentServer)
+    }
+
+    func loadNextIfAvailable() {
+        if let nextEpisode { play(nextEpisode, server: currentServer) }
+    }
+
     private func installControlsObserver() {
         if let controlsTimeObserver { player.removeTimeObserver(controlsTimeObserver) }
         controlsTimeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
@@ -143,6 +157,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func selectAudio(_ source: EpisodeAudioSource?) {
+        pendingResumePosition = playbackPosition
         selectedAudioKey = source?.key
         defaults.set(source?.key, forKey: "cineviet.player.audio.\(movie.id)")
         load(currentEpisode, server: currentServer)
@@ -171,6 +186,7 @@ final class PlayerViewModel: ObservableObject {
         subtitleTask?.cancel()
         if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
         errorMessage = nil
+        playbackNotice = nil
         isLoading = true
         isPlaying = false
         playbackPosition = 0
@@ -199,6 +215,7 @@ final class PlayerViewModel: ObservableObject {
                 case .failed:
                     self.isLoading = false
                     self.errorMessage = item.error?.localizedDescription ?? "Không thể mở nguồn phát."
+                    self.playbackNotice = "Nguồn này lỗi, hãy thử lại hoặc đổi máy chủ."
                 case .unknown:
                     self.isLoading = true
                 @unknown default:
@@ -208,6 +225,10 @@ final class PlayerViewModel: ObservableObject {
             }
         }
         player.replaceCurrentItem(with: item)
+        if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver) }
+        itemFailureObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.playbackNotice = "Nguồn phát bị gián đoạn. Hãy thử lại hoặc đổi máy chủ." }
+        }
         player.play()
     }
 
@@ -231,6 +252,11 @@ final class PlayerViewModel: ObservableObject {
 
     private func resumePlaybackIfNeeded(for episode: EpisodeItem) {
         resumeTask?.cancel()
+        if let pendingResumePosition, pendingResumePosition > 3 {
+            self.pendingResumePosition = nil
+            player.seek(to: CMTime(seconds: pendingResumePosition, preferredTimescale: 600))
+            installHistoryObserver(); player.play(); return
+        }
         resumeTask = Task { [weak self] in
             guard let self else { return }
             let resume = await self.watchHistoryService.resume(movieId: self.movie.id)
@@ -273,22 +299,31 @@ final class PlayerViewModel: ObservableObject {
         overlaySubtitle = nil
         subtitleTask?.cancel()
         if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
-        guard selectedSubtitleLanguage != "off",
-              let track = episode.subtitles.first(where: { $0.lang.lowercased() == selectedSubtitleLanguage.lowercased() }),
-              let url = subtitleURL(track.url) else { return }
+        guard selectedSubtitleLanguage != "off" else { return }
+        let tracks: [EpisodeSubtitleTrack]
+        if selectedSubtitleLanguage == "dual" {
+            tracks = ["vi", "en"].compactMap { language in episode.subtitles.first(where: { $0.lang.lowercased().hasPrefix(language) }) }
+        } else {
+            tracks = episode.subtitles.filter { $0.lang.lowercased() == selectedSubtitleLanguage.lowercased() }
+        }
+        guard !tracks.isEmpty else { return }
         subtitleTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                guard !Task.isCancelled, let source = String(data: data, encoding: .utf8) else { return }
-                let cues = SubtitleParser.parse(source, format: track.format)
-                guard !cues.isEmpty else { return }
+                var cueSets: [[SubtitleCue]] = []
+                for track in tracks {
+                    guard let url = self.subtitleURL(track.url) else { continue }
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    if let source = String(data: data, encoding: .utf8) { cueSets.append(SubtitleParser.parse(source, format: track.format)) }
+                }
+                guard !Task.isCancelled, !cueSets.isEmpty else { return }
                 self.timeObserver = self.player.addPeriodicTimeObserver(
                     forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main
                 ) { [weak self] time in
                     guard let self else { return }
                     let seconds = time.seconds
-                    self.overlaySubtitle = cues.first(where: { seconds >= $0.start && seconds < $0.end })?.text
+                    let lines = cueSets.compactMap { $0.first(where: { seconds >= $0.start && seconds < $0.end })?.text }
+                    self.overlaySubtitle = lines.isEmpty ? nil : lines.joined(separator: "\n")
                 }
             } catch { }
         }
@@ -309,6 +344,7 @@ final class PlayerViewModel: ObservableObject {
             item.select(nil, in: group)
             return
         }
+        if selectedSubtitleLanguage == "dual" { item.select(nil, in: group); return }
         let option = group.options.first { option in
             let language = option.extendedLanguageTag ?? option.locale?.language.languageCode?.identifier
             return language?.lowercased().hasPrefix(selectedSubtitleLanguage.lowercased()) == true
