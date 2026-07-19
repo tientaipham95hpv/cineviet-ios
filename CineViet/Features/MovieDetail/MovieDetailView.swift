@@ -18,8 +18,8 @@ struct MovieDetailView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     switch viewModel.state {
-                    case .loading: ProgressView("Đang tải thông tin phim…").tint(CineVietTheme.accent).frame(width: geometry.size.width, minHeight: 600)
-                    case .failed(let message): ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message).frame(width: geometry.size.width, minHeight: 520).onTapGesture { Task { await viewModel.retry() } }
+                    case .loading: ProgressView("Đang tải thông tin phim…").tint(CineVietTheme.accent).frame(width: geometry.size.width).frame(minHeight: 600)
+                    case .failed(let message): ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message).frame(width: geometry.size.width).frame(minHeight: 520).onTapGesture { Task { await viewModel.retry() } }
                     case .loaded: detailContent(proxy).frame(width: geometry.size.width)
                     }
                 }.frame(width: geometry.size.width)
