@@ -52,8 +52,8 @@ struct MovieDetailView: View {
     private func hero(_ movie: Movie) -> some View {
         ZStack(alignment: .topLeading) {
             AsyncImage(url: movie.backdropURL) { phase in if case .success(let image) = phase { image.resizable().scaledToFill() } else { CineVietTheme.panel } }.frame(maxWidth: .infinity).frame(height: 320).clipped()
-            LinearGradient(colors: [.black.opacity(.2), .clear, CineVietTheme.background], startPoint: .top, endPoint: .bottom)
-            Button { dismiss() } label: { Image(systemName: "chevron.left").font(.headline.bold()).frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle()).overlay { Circle().stroke(.white.opacity(.25)) } }.accessibilityLabel("Quay lại").padding(.leading, 16).padding(.top, 10)
+            LinearGradient(colors: [.black.opacity(0.2), .clear, CineVietTheme.background], startPoint: .top, endPoint: .bottom)
+            Button { dismiss() } label: { Image(systemName: "chevron.left").font(.headline.bold()).frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle()).overlay { Circle().stroke(.white.opacity(0.25)) } }.accessibilityLabel("Quay lại").padding(.leading, 16).padding(.top, 10)
         }
     }
 
@@ -95,12 +95,12 @@ struct MovieDetailView: View {
 
     @ViewBuilder private func section(_ movie: Movie) -> some View {
         switch selectedSection {
-        case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { HStack { Text(movie.episodeCurrent.trimmedNonEmpty ?? "Danh sách tập").font(.headline); Spacer(); if movie.episodes.count > 1 { Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").padding(10).overlay { RoundedRectangle(cornerRadius: 10).stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.subheadline.bold()).frame(maxWidth: .infinity, minHeight: 58).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(CineVietTheme.border) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? .45 : 1) } } }.padding(20)
+        case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { HStack { Text(movie.episodeCurrent.trimmedNonEmpty ?? "Danh sách tập").font(.headline); Spacer(); if movie.episodes.count > 1 { Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").padding(10).overlay { RoundedRectangle(cornerRadius: 10).stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.subheadline.bold()).frame(maxWidth: .infinity, minHeight: 58).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(CineVietTheme.border) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? 0.45 : 1) } } }.padding(20)
         case .cast: VStack(alignment: .leading, spacing: 14) { ForEach(movie.directors.filter { !$0.name.isEmpty }, id: \.name) { Text("Đạo diễn: \($0.name)").font(.subheadline) }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92))], spacing: 16) { ForEach(movie.cast.filter { !$0.name.isEmpty }.prefix(30), id: \.name) { person in VStack { Circle().fill(CineVietTheme.panel).frame(width: 64, height: 64).overlay { Text(String(person.name.prefix(1))).font(.title2.bold()).foregroundStyle(CineVietTheme.accent) }; Text(person.name).font(.caption).multilineTextAlignment(.center).lineLimit(2) } } } }.padding(20)
         case .related: ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movie.related) { MovieCardView(movie: $0) } }.padding(20) }
         }
     }
-    private func animate(_ changes: () -> Void) { if reduceMotion { changes() } else { withAnimation(.easeInOut(duration: .22), changes) } }
+    private func animate(_ changes: () -> Void) { if reduceMotion { changes() } else { withAnimation(.easeInOut(duration: 0.22), changes) } }
 }
 
 private struct DetailCTAStyle: ButtonStyle {
@@ -111,10 +111,10 @@ private struct DetailCTAStyle: ButtonStyle {
             .font(.headline.bold())
             .foregroundStyle(primary ? .black : .white)
             .background(primary ? CineVietTheme.accent : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 15))
-            .overlay { RoundedRectangle(cornerRadius: 15).stroke(primary ? CineVietTheme.accent : .white.opacity(.25)) }
-            .scaleEffect(configuration.isPressed ? .97 : 1)
-            .opacity(isEnabled ? (configuration.isPressed ? .82 : 1) : .45)
-            .animation(.easeOut(duration: .12), value: configuration.isPressed)
+            .overlay { RoundedRectangle(cornerRadius: 15).stroke(primary ? CineVietTheme.accent : .white.opacity(0.25)) }
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -125,18 +125,18 @@ private struct DetailActionStyle: ButtonStyle {
             .foregroundStyle(.white)
             .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 14))
             .overlay { RoundedRectangle(cornerRadius: 14).stroke(CineVietTheme.border) }
-            .scaleEffect(configuration.isPressed ? .95 : 1)
-            .opacity(isEnabled ? (configuration.isPressed ? .72 : 1) : .5)
-            .animation(.easeOut(duration: .12), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.5)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
 private struct EpisodeButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? .96 : 1)
-            .opacity(configuration.isPressed ? .72 : 1)
-            .animation(.easeOut(duration: .12), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

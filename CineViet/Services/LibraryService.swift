@@ -173,12 +173,12 @@ struct RatingStats: Decodable, Equatable {
     let total: Int
     let userRating: Int?
 
-    enum CodingKeys: String, CodingKey { case average, rating, total, count, userRating }
+    enum CodingKeys: String, CodingKey { case average, rating, total, count, userRating, user_rating }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         average = try c.decodeFlexibleDouble(.average) ?? c.decodeFlexibleDouble(.rating) ?? 0
         total = try c.decodeFlexibleInt(.total) ?? c.decodeFlexibleInt(.count) ?? 0
-        userRating = try c.decodeFlexibleInt(.userRating)
+        userRating = try c.decodeFlexibleInt(.userRating) ?? c.decodeFlexibleInt(.user_rating)
     }
 }
 
