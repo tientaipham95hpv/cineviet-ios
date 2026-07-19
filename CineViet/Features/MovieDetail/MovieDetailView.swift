@@ -1,5 +1,12 @@
 import SwiftUI
 
+private struct PlayerLaunch: Identifiable {
+    let id = UUID()
+    let movie: Movie
+    let server: EpisodeServer
+    let episode: EpisodeItem
+}
+
 struct MovieDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: MovieDetailViewModel
@@ -7,6 +14,7 @@ struct MovieDetailView: View {
     @State private var showingNewPlaylist = false
     @State private var newPlaylistName = ""
     @State private var selectedSection = 0
+    @State private var playerLaunch: PlayerLaunch?
 
     init(movie: Movie, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing) {
         _viewModel = StateObject(wrappedValue: MovieDetailViewModel(movie: movie, movieService: movieService, libraryService: libraryService))
@@ -32,6 +40,16 @@ struct MovieDetailView: View {
         .toolbar(.hidden, for: .navigationBar)
         .hidesFloatingNavigation()
         .task { await viewModel.load() }
+        .fullScreenCover(item: $playerLaunch) { launch in
+            PlayerView(
+                movie: launch.movie,
+                server: launch.server,
+                episode: launch.episode,
+                watchHistoryService: watchHistoryService
+            )
+            .background(Color.black.ignoresSafeArea())
+            .interactiveDismissDisabled()
+        }
         .alert("Tạo playlist", isPresented: $showingNewPlaylist) {
             TextField("Tên playlist", text: $newPlaylistName)
             Button("Tạo và thêm phim") { let name = newPlaylistName; newPlaylistName = ""; Task { await viewModel.createPlaylist(name: name) } }.disabled(newPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -75,7 +93,12 @@ struct MovieDetailView: View {
     private func primaryActions(_ movie: Movie, _ proxy: ScrollViewProxy) -> some View {
         HStack(spacing: 12) {
             if let source = viewModel.firstPlayableSource {
-                NavigationLink { PlayerView(movie: movie, server: source.server, episode: source.episode, watchHistoryService: watchHistoryService) } label: { Label("Xem phim", systemImage: "play.fill").font(.headline.bold()).frame(maxWidth: .infinity).padding(.vertical, 11) }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black)
+                Button {
+                    presentPlayer(movie: movie, server: source.server, episode: source.episode)
+                } label: {
+                    Label("Xem phim", systemImage: "play.fill").font(.headline.bold()).frame(maxWidth: .infinity).padding(.vertical, 11)
+                }
+                .buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black)
             } else { Label("Chưa có nguồn", systemImage: "play.slash").frame(maxWidth: .infinity).padding(.vertical, 11).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 15)) }
             Button { selectedSection = 0; withAnimation { proxy.scrollTo("episodes", anchor: .top) } } label: { Label("Tập phim", systemImage: "list.bullet").font(.headline.bold()).frame(maxWidth: .infinity).padding(.vertical, 11) }.buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
         }
@@ -119,10 +142,21 @@ struct MovieDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Label(movie.episodeCurrent.nonEmpty ?? "Danh sách tập", systemImage: "list.bullet").font(.headline); Spacer(); Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { i, source in Button(source.name) { viewModel.selectServer(i) } } } label: { Label(server.name, systemImage: "chevron.down").font(.subheadline).padding(.horizontal, 12).padding(.vertical, 9).overlay { RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.65)) } } }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 12) { ForEach(server.items) { episode in
-                    if PlayerViewModel.directMediaURL(for: episode) != nil { NavigationLink { PlayerView(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService) } label: { Text(episode.name).font(.headline).frame(maxWidth: .infinity, minHeight: 76).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(CineVietTheme.border) } } } else { Text(episode.name).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 76).background(CineVietTheme.panel.opacity(0.6), in: RoundedRectangle(cornerRadius: 12)) }
+                    if PlayerViewModel.directMediaURL(for: episode) != nil {
+                        Button {
+                            presentPlayer(movie: movie, server: server, episode: episode)
+                        } label: {
+                            Text(episode.name).font(.headline).frame(maxWidth: .infinity, minHeight: 76).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(CineVietTheme.border) }
+                        }
+                        .buttonStyle(.plain)
+                    } else { Text(episode.name).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 76).background(CineVietTheme.panel.opacity(0.6), in: RoundedRectangle(cornerRadius: 12)) }
                 } }
             }.padding(.horizontal, 20).padding(.top, 16).id("episodes")
         }
+    }
+
+    private func presentPlayer(movie: Movie, server: EpisodeServer, episode: EpisodeItem) {
+        playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode)
     }
 
     @ViewBuilder private func people(_ movie: Movie) -> some View { if selectedSection == 1 { VStack(alignment: .leading, spacing: 12) { ForEach(movie.directors.prefix(5), id: \.name) { Text("Đạo diễn: \($0.name)") }; Text(movie.cast.prefix(30).map(\.name).joined(separator: " • ")).foregroundStyle(CineVietTheme.textMuted) }.padding(20) } }
