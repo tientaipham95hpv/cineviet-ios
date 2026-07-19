@@ -1,0 +1,148 @@
+import SwiftUI
+
+struct HomeView: View {
+    @StateObject private var viewModel: HomeViewModel
+    let logout: () -> Void
+
+    init(movieService: MovieServicing, logout: @escaping () -> Void) {
+        _viewModel = StateObject(wrappedValue: HomeViewModel(movieService: movieService))
+        self.logout = logout
+    }
+
+    var body: some View {
+        NavigationStack {
+            content
+                .background(Color.black.ignoresSafeArea())
+                .navigationTitle("CineViet")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: logout) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                        }
+                        .accessibilityLabel("Đăng xuất")
+                    }
+                }
+                .navigationDestination(item: $viewModel.selectedMovie) { movie in
+                    MovieDetailPlaceholderView(movie: movie)
+                }
+        }
+        .tint(.orange)
+        .task { await viewModel.load() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch viewModel.state {
+        case .idle, .loading:
+            ProgressView("Đang tải phim…")
+                .tint(.orange)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .failed(let message):
+            ContentUnavailableView {
+                Label("Không tải được trang chủ", systemImage: "wifi.exclamationmark")
+            } description: {
+                Text(message)
+            } actions: {
+                Button("Thử lại") { Task { await viewModel.retry() } }
+            }
+            .foregroundStyle(.white)
+        case .loaded(let data):
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 30) {
+                    if let hero = data.featured.first {
+                        heroView(hero)
+                            .onTapGesture { viewModel.selectedMovie = hero }
+                    }
+                    ForEach(data.sections) { section in
+                        movieSection(section)
+                    }
+                }
+                .padding(.bottom, 32)
+            }
+            .refreshable { await viewModel.retry() }
+        }
+    }
+
+    private func heroView(_ movie: Movie) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            AsyncImage(url: movie.backdropURL) { phase in
+                if case .success(let image) = phase {
+                    image.resizable().scaledToFill()
+                } else {
+                    Color.white.opacity(0.08)
+                }
+            }
+            .frame(height: 310)
+            .clipped()
+
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.92)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(movie.title)
+                    .font(.largeTitle.bold())
+                    .lineLimit(2)
+                if !movie.metadataLine.isEmpty {
+                    Text(movie.metadataLine).foregroundStyle(.secondary)
+                }
+            }
+            .padding(20)
+        }
+        .frame(height: 310)
+        .contentShape(Rectangle())
+    }
+
+    private func movieSection(_ section: HomeSection) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(section.title)
+                .font(.title2.bold())
+                .padding(.horizontal, 16)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(section.movies) { movie in
+                        MovieCardView(movie: movie)
+                            .onTapGesture { viewModel.selectedMovie = movie }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+}
+
+private struct MovieDetailPlaceholderView: View {
+    let movie: Movie
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                AsyncImage(url: movie.backdropURL) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Color.white.opacity(0.08)
+                    }
+                }
+                .frame(height: 260)
+                .clipped()
+                Text(movie.title).font(.largeTitle.bold())
+                if !movie.metadataLine.isEmpty {
+                    Text(movie.metadataLine).foregroundStyle(.secondary)
+                }
+                Text(movie.description)
+                    .foregroundStyle(.secondary)
+                Text("Movie Detail đầy đủ sẽ được triển khai ở module tiếp theo.")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+            .padding(.bottom, 32)
+        }
+        .background(Color.black.ignoresSafeArea())
+        .navigationTitle(movie.title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}

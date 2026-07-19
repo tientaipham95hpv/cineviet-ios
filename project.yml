@@ -1,0 +1,25 @@
+name: CineViet
+options:
+  bundleIdPrefix: live.cineviet
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    PRODUCT_BUNDLE_IDENTIFIER: live.cineviet.ios
+    TARGETED_DEVICE_FAMILY: "1,2"
+targets:
+  CineViet:
+    type: application
+    platform: iOS
+    sources:
+      - path: CineViet
+    settings:
+      base:
+        INFOPLIST_KEY_CFBundleDisplayName: CineViet
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+    scheme:
+      testTargets: []
