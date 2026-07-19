@@ -22,8 +22,17 @@ struct HomeView: View {
                         .accessibilityLabel("Đăng xuất")
                     }
                 }
-                .navigationDestination(item: $viewModel.selectedMovie) { movie in
-                    MovieDetailPlaceholderView(movie: movie)
+                .navigationDestination(
+                    isPresented: Binding(
+                        get: { viewModel.selectedMovie != nil },
+                        set: { isPresented in
+                            if !isPresented { viewModel.selectedMovie = nil }
+                        }
+                    )
+                ) {
+                    if let movie = viewModel.selectedMovie {
+                        MovieDetailPlaceholderView(movie: movie)
+                    }
                 }
         }
         .tint(.orange)
