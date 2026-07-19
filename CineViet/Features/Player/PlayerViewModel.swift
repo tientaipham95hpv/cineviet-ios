@@ -28,7 +28,9 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var currentServer: EpisodeServer
     @Published private(set) var selectedAudioKey: String?
     @Published var selectedSubtitleLanguage: String
-    @Published private(set) var overlaySubtitle: String?
+    /// External subtitle cues keyed by language. Keeping the tracks separate
+    /// avoids confusing a multiline cue with the boundary between VI and EN.
+    @Published private(set) var overlaySubtitles: [String: String] = [:]
     @Published var subtitleStyles: [String: SubtitleStyle] = ["vi": .vietnamese, "en": .english]
     var subtitleStyle: SubtitleStyle { subtitleStyles[selectedSubtitleLanguage == "en" ? "en" : "vi"] ?? .vietnamese }
     @Published private(set) var isPlaying = false
@@ -298,7 +300,7 @@ final class PlayerViewModel: ObservableObject {
     private func clearCurrentItemState() {
         itemObservation?.invalidate(); itemObservation = nil
         if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver); self.itemFailureObserver = nil }
-        subtitleTask?.cancel(); overlaySubtitle = nil
+        subtitleTask?.cancel(); overlaySubtitles = [:]
         if let subtitleTimeObserver { player.removeTimeObserver(subtitleTimeObserver); self.subtitleTimeObserver = nil }
         errorMessage = nil; isLoading = false; isPlaying = false
     }
@@ -388,7 +390,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func startExternalSubtitleOverlay(for episode: EpisodeItem) {
-        overlaySubtitle = nil; subtitleTask?.cancel()
+        overlaySubtitles = [:]; subtitleTask?.cancel()
         if let subtitleTimeObserver { player.removeTimeObserver(subtitleTimeObserver); self.subtitleTimeObserver = nil }
         guard selectedSubtitleLanguage != "off" else { return }
         let tracks: [EpisodeSubtitleTrack]
@@ -400,15 +402,22 @@ final class PlayerViewModel: ObservableObject {
         guard !tracks.isEmpty else { return }
         subtitleTask = Task { [weak self] in
             guard let self else { return }
-            var cueSets: [[SubtitleCue]] = []
+            var cueSets: [(language: String, cues: [SubtitleCue])] = []
             for track in tracks {
                 guard let url = self.subtitleURL(track.url), let (data, _) = try? await URLSession.shared.data(from: url), let text = String(data: data, encoding: .utf8) else { continue }
-                cueSets.append(SubtitleParser.parse(text, format: track.format))
+                let language = track.lang.lowercased().hasPrefix("en") ? "en" : "vi"
+                cueSets.append((language, SubtitleParser.parse(text, format: track.format)))
             }
             guard !Task.isCancelled, !cueSets.isEmpty else { return }
             self.subtitleTimeObserver = self.player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main) { [weak self] time in
-                let lines = cueSets.compactMap { cues in cues.first(where: { time.seconds >= $0.start && time.seconds < $0.end })?.text }
-                self?.overlaySubtitle = lines.isEmpty ? nil : lines.joined(separator: "\n")
+                var active: [String: String] = [:]
+                for cueSet in cueSets {
+                    if let text = cueSet.cues.first(where: { time.seconds >= $0.start && time.seconds < $0.end })?.text,
+                       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        active[cueSet.language] = text
+                    }
+                }
+                self?.overlaySubtitles = active
             }
         }
     }

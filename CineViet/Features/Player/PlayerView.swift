@@ -157,25 +157,13 @@ struct PlayerView: View {
 
     private var subtitleLayer: some View {
         GeometryReader { geometry in
-            if let subtitle = viewModel.overlaySubtitle {
-                let dual = viewModel.selectedSubtitleLanguage == "dual"
-                let blocks = dual ? subtitle.components(separatedBy: "\n") : [subtitle]
-                let viBottom = max(viewModel.subtitleStyles["vi"]?.bottom ?? 7, viewModel.subtitleStyles["en"]?.bottom ?? 20)
-                let enBottom = min(viewModel.subtitleStyles["vi"]?.bottom ?? 7, viewModel.subtitleStyles["en"]?.bottom ?? 20)
-                ZStack(alignment: .bottom) {
-                    ForEach(Array(blocks.enumerated()), id: \.offset) { index, text in
-                        let language = dual && index > 0 ? "en" : (viewModel.selectedSubtitleLanguage == "en" ? "en" : "vi")
-                        let style = viewModel.subtitleStyles[language] ?? (language == "en" ? .english : .vietnamese)
-                        Text(text.trimmingCharacters(in: .whitespacesAndNewlines))
-                            .font(.custom(style.font, fixedSize: style.size).weight(.bold))
-                            .foregroundStyle(Color.playerHex(style.colorHex))
-                            .multilineTextAlignment(.center)
-                            .shadow(color: .black, radius: 4, x: 0, y: 1)
-                            .shadow(color: .black, radius: 8, x: 0, y: 2)
-                            .padding(.horizontal, 28)
-                            .padding(.bottom, geometry.size.height * ((dual ? (index > 0 ? enBottom : viBottom) : style.bottom) / 100))
-                    }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            if !viewModel.overlaySubtitles.isEmpty {
+                CollisionSafeSubtitleLayout(
+                    captions: viewModel.overlaySubtitles,
+                    styles: viewModel.subtitleStyles,
+                    dual: viewModel.selectedSubtitleLanguage == "dual",
+                    minimumBottomInset: controlsVisible ? 96 : max(geometry.safeAreaInsets.bottom + 10, 12)
+                )
             }
         }.allowsHitTesting(false)
     }
@@ -265,10 +253,12 @@ private struct SubtitleSettingsPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Picker("Ngôn ngữ", selection: $language) { Text("Phụ đề chính").tag("vi"); Text("Song ngữ / Anh").tag("en") }.pickerStyle(.segmented)
-                VStack(spacing: 0) {
-                    Text("Đây là nội dung phụ đề mẫu").font(.custom(styles["vi"]?.font ?? "Lora", fixedSize: styles["vi"]?.size ?? 30).weight(.bold)).foregroundStyle(Color.playerHex(styles["vi"]?.colorHex ?? "FFFFFF"))
-                    Text("Subtitle preview").font(.custom(styles["en"]?.font ?? "Lora", fixedSize: styles["en"]?.size ?? 25).weight(.bold)).foregroundStyle(Color.playerHex(styles["en"]?.colorHex ?? "FFFF99"))
-                }.frame(maxWidth: .infinity).padding(.vertical, 24).background(.black, in: RoundedRectangle(cornerRadius: 12))
+                CollisionSafeSubtitleLayout(
+                    captions: ["vi": "Đây là nội dung phụ đề mẫu", "en": "Subtitle preview"],
+                    styles: styles,
+                    dual: true,
+                    minimumBottomInset: 12
+                ).frame(maxWidth: .infinity, minHeight: 190).background(.black, in: RoundedRectangle(cornerRadius: 12))
                 Text(language == "vi" ? "Phụ đề chính" : "Song ngữ / Phụ đề Anh").font(.headline)
                 Text("Font chữ").font(.subheadline.bold())
                 Picker("Font chữ", selection: Binding(get: { style.font }, set: { onChange(language, styleWith(style, font: $0)) })) { ForEach(["Lora", "Plus Jakarta Sans", "Arial", "Tahoma"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
@@ -283,6 +273,94 @@ private struct SubtitleSettingsPanel: View {
         }
     }
     private func styleWith(_ style: PlayerViewModel.SubtitleStyle, font: String? = nil, size: Double? = nil, colorHex: String? = nil, bottom: Double? = nil) -> PlayerViewModel.SubtitleStyle { .init(font: font ?? style.font, size: size ?? style.size, colorHex: colorHex ?? style.colorHex, bottom: bottom ?? style.bottom) }
+}
+
+/// Places VI and EN as independently styled views, measures their real wrapped
+/// bounds, then separates their vertical boxes. User positions remain desired
+/// anchors; collision resolution only moves the tracks enough to keep VI above
+/// EN with a readable gap and within the visible landscape area.
+private struct CollisionSafeSubtitleLayout: View {
+    let captions: [String: String]
+    let styles: [String: PlayerViewModel.SubtitleStyle]
+    let dual: Bool
+    let minimumBottomInset: CGFloat
+    @State private var measured: [String: CGSize] = [:]
+    private let gap: CGFloat = 12
+    private let topInset: CGFloat = 10
+
+    var body: some View {
+        GeometryReader { geometry in
+            let active = activeLanguages
+            let frames = resolvedFrames(in: geometry.size, languages: active)
+            ZStack(alignment: .topLeading) {
+                ForEach(active, id: \.self) { language in
+                    let style = styles[language] ?? (language == "en" ? .english : .vietnamese)
+                    Text(captions[language]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+                        .font(.custom(style.font, fixedSize: style.size).weight(.bold))
+                        .foregroundStyle(Color.playerHex(style.colorHex))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(max(0, CGFloat(style.size) * 0.2))
+                        .shadow(color: .black, radius: 4, x: 0, y: 1)
+                        .shadow(color: .black, radius: 8, x: 0, y: 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: max(0, geometry.size.width - 56))
+                        .background(GeometryReader { proxy in
+                            Color.clear.preference(key: SubtitleSizePreferenceKey.self, value: [language: proxy.size])
+                        })
+                        .position(x: geometry.size.width / 2, y: (frames[language]?.midY ?? geometry.size.height / 2))
+                }
+            }
+        }
+        .onPreferenceChange(SubtitleSizePreferenceKey.self) { measured.merge($0) { _, new in new } }
+    }
+
+    private var activeLanguages: [String] {
+        if dual { return ["vi", "en"].filter { !(captions[$0] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
+        let language = captions["en"] != nil && captions["vi"] == nil ? "en" : "vi"
+        return captions[language] == nil ? [] : [language]
+    }
+
+    private func resolvedFrames(in size: CGSize, languages: [String]) -> [String: CGRect] {
+        guard size.height > 0 else { return [:] }
+        func height(_ language: String) -> CGFloat {
+            // Real SwiftUI measurement is preferred; this conservative fallback
+            // protects the first layout pass and multiline/large-font captions.
+            let style = styles[language] ?? (language == "en" ? .english : .vietnamese)
+            return max(measured[language]?.height ?? CGFloat(style.size) * 2.5, CGFloat(style.size) * 1.3)
+        }
+        func desiredTop(_ language: String) -> CGFloat {
+            let style = styles[language] ?? (language == "en" ? .english : .vietnamese)
+            let bottom = max(minimumBottomInset, size.height * CGFloat(style.bottom / 100))
+            return size.height - bottom - height(language)
+        }
+        guard languages.count == 2 else {
+            guard let language = languages.first else { return [:] }
+            let h = height(language)
+            let top = min(max(topInset, desiredTop(language)), max(topInset, size.height - minimumBottomInset - h))
+            return [language: CGRect(x: 28, y: top, width: max(0, size.width - 56), height: h)]
+        }
+
+        let enHeight = height("en"), viHeight = height("vi")
+        var enTop = min(max(topInset + viHeight + gap, desiredTop("en")), size.height - minimumBottomInset - enHeight)
+        var viTop = min(desiredTop("vi"), enTop - gap - viHeight)
+        if viTop < topInset {
+            viTop = topInset
+            enTop = max(enTop, viTop + viHeight + gap)
+        }
+        if enTop + enHeight > size.height - minimumBottomInset {
+            enTop = size.height - minimumBottomInset - enHeight
+            viTop = min(viTop, enTop - gap - viHeight)
+        }
+        return [
+            "vi": CGRect(x: 28, y: max(topInset, viTop), width: max(0, size.width - 56), height: viHeight),
+            "en": CGRect(x: 28, y: max(topInset + viHeight + gap, enTop), width: max(0, size.width - 56), height: enHeight)
+        ]
+    }
+}
+
+private struct SubtitleSizePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGSize] = [:]
+    static func reduce(value: inout [String: CGSize], nextValue: () -> [String: CGSize]) { value.merge(nextValue()) { _, new in new } }
 }
 
 private extension Color {
