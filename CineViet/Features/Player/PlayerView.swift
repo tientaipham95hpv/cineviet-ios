@@ -58,6 +58,14 @@ struct PlayerView: View {
                     Text(viewModel.movie.title).font(.headline)
                     Text("\(viewModel.currentServer.name) • \(viewModel.currentEpisode.name)")
                         .foregroundStyle(.secondary)
+                    Toggle("Tự động phát tập tiếp theo", isOn: $viewModel.isAutoPlayEnabled)
+                    if let nextEpisode = viewModel.nextEpisode {
+                        Button {
+                            viewModel.playNextEpisode()
+                        } label: {
+                            Label("Phát tiếp: \(nextEpisode.name)", systemImage: "forward.end.fill")
+                        }
+                    }
                 }
                 if !viewModel.availableAudio.isEmpty {
                     Section("Âm thanh") {

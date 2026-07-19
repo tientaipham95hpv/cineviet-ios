@@ -11,6 +11,9 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var selectedAudioKey: String?
     @Published var selectedSubtitleLanguage: String
     @Published private(set) var overlaySubtitle: String?
+    @Published var isAutoPlayEnabled: Bool {
+        didSet { defaults.set(isAutoPlayEnabled, forKey: autoPlayPreferenceKey) }
+    }
 
     let movie: Movie
     let player = AVPlayer()
@@ -20,20 +23,28 @@ final class PlayerViewModel: ObservableObject {
     private var subtitleTask: Task<Void, Never>?
     private var historyObserver: Any?
     private var resumeTask: Task<Void, Never>?
+    private var playbackEndObserver: NSObjectProtocol?
     private let defaults: UserDefaults
     private let watchHistoryService: WatchHistoryServicing
     private var lastSavedPosition: Double = 0
+    private var serverPreferenceKey: String { "cineviet.player.server.\(movie.id)" }
+    private var episodePreferenceKey: String { "cineviet.player.episode.\(movie.id)" }
+    private var autoPlayPreferenceKey: String { "cineviet.player.autoplay" }
     var availableAudio: [EpisodeAudioSource] { currentEpisode.audioSources }
     var availableSubtitles: [EpisodeSubtitleTrack] { currentEpisode.subtitles }
 
     init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing, defaults: UserDefaults = .standard) {
         self.movie = movie
-        currentServer = server
-        currentEpisode = episode
         self.defaults = defaults
         self.watchHistoryService = watchHistoryService
+        let preferredServerName = defaults.string(forKey: "cineviet.player.server.\(movie.id)")
+        let restoredServer = movie.episodes.first(where: { $0.name == preferredServerName }) ?? server
+        let preferredEpisodeId = defaults.string(forKey: "cineviet.player.episode.\(movie.id)")
+        currentServer = restoredServer
+        currentEpisode = restoredServer.items.first(where: { $0.id == preferredEpisodeId }) ?? episode
         selectedAudioKey = defaults.string(forKey: "cineviet.player.audio.\(movie.id)")
         selectedSubtitleLanguage = defaults.string(forKey: "cineviet.player.subtitle.\(movie.id)") ?? "vi"
+        isAutoPlayEnabled = defaults.object(forKey: "cineviet.player.autoplay") as? Bool ?? true
         player.allowsExternalPlayback = true
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
     }
@@ -44,10 +55,12 @@ final class PlayerViewModel: ObservableObject {
         if let historyObserver { player.removeTimeObserver(historyObserver) }
         subtitleTask?.cancel()
         resumeTask?.cancel()
+        if let playbackEndObserver { NotificationCenter.default.removeObserver(playbackEndObserver) }
     }
 
     func start() {
         configureAudioSession()
+        installPlaybackEndObserver()
         load(currentEpisode, server: currentServer)
     }
 
@@ -59,13 +72,30 @@ final class PlayerViewModel: ObservableObject {
         if let historyObserver { player.removeTimeObserver(historyObserver); self.historyObserver = nil }
         subtitleTask?.cancel()
         resumeTask?.cancel()
+        if let playbackEndObserver {
+            NotificationCenter.default.removeObserver(playbackEndObserver)
+            self.playbackEndObserver = nil
+        }
     }
 
     func play(_ episode: EpisodeItem, server: EpisodeServer) {
         currentEpisode = episode
         currentServer = server
+        persistPlaybackSelection()
         lastSavedPosition = 0
         load(episode, server: server)
+    }
+
+    var nextEpisode: EpisodeItem? {
+        guard let index = currentServer.items.firstIndex(where: { $0.id == currentEpisode.id }) else { return nil }
+        let nextIndex = currentServer.items.index(after: index)
+        guard nextIndex < currentServer.items.endIndex else { return nil }
+        return currentServer.items[nextIndex]
+    }
+
+    func playNextEpisode() {
+        guard let nextEpisode else { return }
+        play(nextEpisode, server: currentServer)
     }
 
     func selectAudio(_ source: EpisodeAudioSource?) {
@@ -121,6 +151,24 @@ final class PlayerViewModel: ObservableObject {
             }
         }
         player.replaceCurrentItem(with: item)
+    }
+
+    private func persistPlaybackSelection() {
+        defaults.set(currentServer.name, forKey: serverPreferenceKey)
+        defaults.set(currentEpisode.id, forKey: episodePreferenceKey)
+    }
+
+    private func installPlaybackEndObserver() {
+        if let playbackEndObserver { NotificationCenter.default.removeObserver(playbackEndObserver) }
+        playbackEndObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                guard let self, notification.object as? AVPlayerItem === self.player.currentItem else { return }
+                self.saveProgress()
+                if self.isAutoPlayEnabled { self.playNextEpisode() }
+            }
+        }
     }
 
     private func resumePlaybackIfNeeded(for episode: EpisodeItem) {
