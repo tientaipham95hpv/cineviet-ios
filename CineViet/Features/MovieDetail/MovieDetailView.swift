@@ -92,8 +92,15 @@ struct MovieDetailView: View {
             if let server = viewModel.selectedServer {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 8)], spacing: 8) {
                     ForEach(server.items) { episode in
-                        Button(episode.name) { viewModel.selectedEpisode = episode }
-                            .buttonStyle(.bordered)
+                        NavigationLink {
+                            PlayerView(movie: movie, server: server, episode: episode)
+                        } label: {
+                            HStack {
+                                Text(episode.name)
+                                Image(systemName: "play.fill")
+                            }
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
                 .padding(.horizontal, 16)
