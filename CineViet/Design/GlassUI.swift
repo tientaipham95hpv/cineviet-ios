@@ -1,9 +1,15 @@
 import SwiftUI
 
 enum CineVietTheme {
-    static let accent = Color.orange
-    static let background = Color(red: 0.025, green: 0.03, blue: 0.055)
-    static let secondaryBackground = Color(red: 0.07, green: 0.08, blue: 0.12)
+    // Canonical CineViet palette shared with Flutter CvColors and the website.
+    static let accent = Color(red: 45 / 255, green: 224 / 255, blue: 160 / 255)
+    static let accentDeep = Color(red: 7 / 255, green: 143 / 255, blue: 102 / 255)
+    static let background = Color(red: 7 / 255, green: 9 / 255, blue: 13 / 255)
+    static let secondaryBackground = Color(red: 16 / 255, green: 18 / 255, blue: 23 / 255)
+    static let panel = Color(red: 23 / 255, green: 26 / 255, blue: 32 / 255)
+    static let border = Color(red: 43 / 255, green: 48 / 255, blue: 56 / 255)
+    static let brandRed = Color(red: 229 / 255, green: 9 / 255, blue: 47 / 255)
+    static let textMuted = Color(red: 184 / 255, green: 196 / 255, blue: 212 / 255)
 }
 
 struct GlassPanel: ViewModifier {

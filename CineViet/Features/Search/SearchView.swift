@@ -64,5 +64,5 @@ struct SearchView: View {
 
 struct ContentMessage: View {
     let icon: String; let title: String; let message: String
-    var body: some View { VStack(spacing: 12) { Image(systemName: icon).font(.system(size: 38)).foregroundStyle(.orange); Text(title).font(.title3.bold()); Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center) }.padding() }
+    var body: some View { VStack(spacing: 12) { Image(systemName: icon).font(.system(size: 38)).foregroundStyle(CineVietTheme.accent); Text(title).font(.title3.bold()); Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center) }.padding() }
 }

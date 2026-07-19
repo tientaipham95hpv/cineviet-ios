@@ -39,7 +39,7 @@ struct HomeView: View {
                     }
                 }
         }
-        .tint(.orange)
+        .tint(CineVietTheme.accent)
         .task { await viewModel.load() }
     }
 
@@ -48,14 +48,14 @@ struct HomeView: View {
         switch viewModel.state {
         case .idle, .loading:
             ProgressView("Đang tải phim…")
-                .tint(.orange)
+                .tint(CineVietTheme.accent)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let message):
             VStack(spacing: 16) {
                 Image(systemName: "wifi.exclamationmark")
                     .font(.system(size: 42))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CineVietTheme.accent)
                 Text("Không tải được trang chủ")
                     .font(.title2.bold())
                 Text(message)
@@ -109,7 +109,7 @@ struct HomeView: View {
                 }
             }
             .padding(20)
-            .cineGlass(cornerRadius: 18, tint: .orange)
+            .cineGlass(cornerRadius: 18, tint: CineVietTheme.accent)
             .padding(16)
         }
         .frame(height: 310)
@@ -136,7 +136,7 @@ struct HomeView: View {
     private var homeBackground: some View {
         ZStack {
             CineVietTheme.background.ignoresSafeArea()
-            RadialGradient(colors: [.orange.opacity(0.16), .clear], center: .topTrailing, startRadius: 10, endRadius: 430).ignoresSafeArea()
+            RadialGradient(colors: [CineVietTheme.accent.opacity(0.16), .clear], center: .topTrailing, startRadius: 10, endRadius: 430).ignoresSafeArea()
             RadialGradient(colors: [.purple.opacity(0.12), .clear], center: .bottomLeading, startRadius: 10, endRadius: 500).ignoresSafeArea()
         }
     }

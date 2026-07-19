@@ -19,7 +19,7 @@ struct SessionRootView: View {
             switch viewModel.sessionState {
             case .restoring:
                 ProgressView("Đang khôi phục phiên đăng nhập…")
-                    .tint(.orange)
+                    .tint(CineVietTheme.accent)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black)

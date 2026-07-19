@@ -35,7 +35,7 @@ struct LoginView: View {
         VStack(spacing: 12) {
             Text("CineViet")
                 .font(.system(size: 38, weight: .black, design: .rounded))
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(CineVietTheme.accent)
             Text("Đăng nhập để tiếp tục xem phim")
                 .font(.headline)
                 .foregroundStyle(.white.opacity(0.78))
@@ -76,7 +76,7 @@ struct LoginView: View {
                 .padding(.vertical, 15)
             }
             .foregroundStyle(.black)
-            .background(Color.orange, in: RoundedRectangle(cornerRadius: 12))
+            .background(CineVietTheme.accent, in: RoundedRectangle(cornerRadius: 12))
             .disabled(!viewModel.canSubmit)
             .opacity(viewModel.canSubmit ? 1 : 0.55)
             .accessibilityIdentifier("login-submit")

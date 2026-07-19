@@ -32,24 +32,24 @@ struct PlayerView: View {
                 }
                 if viewModel.isLoading {
                     ProgressView("Đang tải nguồn phát…")
-                        .tint(.orange)
+                        .tint(CineVietTheme.accent)
                         .padding()
-                        .cineGlass(cornerRadius: 14, tint: .orange)
+                        .cineGlass(cornerRadius: 14, tint: CineVietTheme.accent)
                 }
                 if viewModel.isBuffering && !viewModel.isLoading {
-                    ProgressView().tint(.orange).padding(16).cineGlass(cornerRadius: 18, tint: .orange)
+                    ProgressView().tint(CineVietTheme.accent).padding(16).cineGlass(cornerRadius: 18, tint: CineVietTheme.accent)
                 }
                 if let message = viewModel.errorMessage {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.largeTitle)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CineVietTheme.accent)
                         Text(message).multilineTextAlignment(.center)
                         Button("Thử lại") { viewModel.start() }
                             .buttonStyle(.borderedProminent)
                     }
                     .padding(24)
-                    .cineGlass(cornerRadius: 18, tint: .orange)
+                    .cineGlass(cornerRadius: 18, tint: CineVietTheme.accent)
                     .padding()
                 }
             }
@@ -63,7 +63,7 @@ struct PlayerView: View {
                         .foregroundStyle(.secondary)
                     if let seconds = viewModel.resumePosition {
                         Label("Đã tiếp tục từ \(Int(seconds / 60)):\(String(format: "%02d", Int(seconds) % 60))", systemImage: "clock.arrow.circlepath")
-                            .font(.caption).foregroundStyle(.orange)
+                            .font(.caption).foregroundStyle(CineVietTheme.accent)
                     }
                     Toggle("Tự động phát tập tiếp theo", isOn: $viewModel.isAutoPlayEnabled)
                     if let nextEpisode = viewModel.nextEpisode {
@@ -111,7 +111,7 @@ struct PlayerView: View {
                                     Spacer()
                                     if episode.id == viewModel.currentEpisode.id,
                                        server.name == viewModel.currentServer.name {
-                                        Image(systemName: "play.circle.fill").foregroundStyle(.orange)
+                                        Image(systemName: "play.circle.fill").foregroundStyle(CineVietTheme.accent)
                                     }
                                 }
                             }
@@ -135,7 +135,7 @@ struct PlayerView: View {
         HStack {
             Text(title)
             Spacer()
-            if selected { Image(systemName: "checkmark").foregroundStyle(.orange) }
+            if selected { Image(systemName: "checkmark").foregroundStyle(CineVietTheme.accent) }
         }
     }
 }

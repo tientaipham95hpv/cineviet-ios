@@ -12,7 +12,7 @@ struct MovieCardView: View {
                 case .failure:
                     placeholder
                 case .empty:
-                    ZStack { placeholder; ProgressView().tint(.orange) }
+                    ZStack { placeholder; ProgressView().tint(CineVietTheme.accent) }
                 @unknown default:
                     placeholder
                 }
@@ -22,7 +22,7 @@ struct MovieCardView: View {
             .overlay(alignment: .topTrailing) {
                 if !movie.quality.isEmpty {
                     Text(movie.quality).font(.caption2.bold()).padding(.horizontal, 7).padding(.vertical, 4)
-                        .cineGlass(cornerRadius: 10, tint: .orange).padding(7)
+                        .cineGlass(cornerRadius: 10, tint: CineVietTheme.accent).padding(7)
                 }
             }
 

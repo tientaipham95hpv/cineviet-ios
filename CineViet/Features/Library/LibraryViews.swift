@@ -52,7 +52,7 @@ struct PlaylistDetailView: View {
         if viewModel.isLoading && viewModel.detail == nil { ProgressView("Đang tải playlist…") }
         else if let error = viewModel.errorMessage, viewModel.detail == nil { ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được playlist", message: error) }
         else if let detail = viewModel.detail { ScrollView { VStack(spacing: 18) {
-            HStack { Label(detail.playlist.isPublic ? "Công khai" : "Riêng tư", systemImage: detail.playlist.isPublic ? "globe" : "lock.fill"); Spacer(); Button("Đổi chế độ") { Task { await viewModel.toggleVisibility() } } }.padding(16).cineGlass(cornerRadius: 20, tint: .orange).padding(.horizontal)
+            HStack { Label(detail.playlist.isPublic ? "Công khai" : "Riêng tư", systemImage: detail.playlist.isPublic ? "globe" : "lock.fill"); Spacer(); Button("Đổi chế độ") { Task { await viewModel.toggleVisibility() } } }.padding(16).cineGlass(cornerRadius: 20, tint: CineVietTheme.accent).padding(.horizontal)
             if detail.movies.isEmpty { ContentMessage(icon: "rectangle.stack", title: "Playlist chưa có phim", message: "Thêm phim từ trang chi tiết.").frame(minHeight: 280) }
             else { LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 14)], spacing: 18) { ForEach(detail.movies) { movie in ZStack(alignment: .topTrailing) { MovieCardView(movie: movie); Button { Task { await viewModel.remove(movie) } } label: { Image(systemName: "xmark").padding(8).cineGlass(cornerRadius: 14, tint: .red) }.padding(6) } } }.padding() }
             Button("Xoá playlist", role: .destructive) { confirmDelete = true }.buttonStyle(.bordered).padding(.bottom, 30)
