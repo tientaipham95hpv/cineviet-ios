@@ -124,7 +124,7 @@ struct LibraryService: LibraryServicing {
 
     func rate(movieID: Int, rating: Int) async throws -> RatingStats {
         let request = try APIRequest.json(method: .post, path: "/movies/\(movieID)/rate", body: RatingPayload(rating: rating), requiresAuthentication: true)
-        let _: RatingSubmissionResponse = try await apiClient.send(request)
+        let _: JSONValue = try await apiClient.send(request)
         return try await ratingStats(movieID: movieID)
     }
 }
