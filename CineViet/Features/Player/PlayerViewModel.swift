@@ -279,7 +279,9 @@ final class PlayerViewModel: ObservableObject {
             episode.audioSources.first { $0.key == key }
         }
         let originalAudio = episode.audioSources.first { $0.key.lowercased() == "original" }
-        let candidates = [selectedAudio?.url, originalAudio?.url, episode.audioSources.first?.url, episode.linkM3u8]
+        // The episode HLS URL is the canonical playback source. Audio variants are
+        // only fallbacks when the backend does not provide link_m3u8.
+        let candidates = [episode.linkM3u8, selectedAudio?.url, originalAudio?.url, episode.audioSources.first?.url]
         let raw = candidates.compactMap { value in
             let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return trimmed.isEmpty ? nil : trimmed
