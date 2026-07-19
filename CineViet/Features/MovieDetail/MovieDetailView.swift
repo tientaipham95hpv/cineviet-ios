@@ -97,8 +97,7 @@ struct MovieDetailView: View {
     }
 
     private func actions(_ movie: Movie) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeading("Tiện ích", icon: "sparkles")
+        VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
                 action(viewModel.isFavorite ? "heart.fill" : "heart", viewModel.isFavorite ? "Đã thích" : "Yêu thích", accent: .pink, busy: viewModel.isFavoriteBusy) { Task { await viewModel.toggleFavorite() } }
                 Menu { ForEach(viewModel.playlists) { list in Button(list.name) { Task { await viewModel.addToPlaylist(list) } } }; Divider(); Button("Tạo playlist mới…") { showingNewPlaylist = true } } label: { actionLabel("text.badge.plus", "Playlist", accent: .cyan) }
