@@ -51,6 +51,12 @@ jobs:
             grep -E '(^|: )(error:|fatal error:)|BUILD FAILED' xcodebuild.log | tail -100 | tee build-errors.txt >> "$GITHUB_STEP_SUMMARY" || true
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat build-errors.txt 2>/dev/null || true
+            while IFS= read -r line; do
+              safe_line=${line//'%'/'%25'}
+              safe_line=${safe_line//$'\r'/'%0D'}
+              safe_line=${safe_line//$'\n'/'%0A'}
+              echo "::error title=Swift compiler::$safe_line"
+            done < build-errors.txt
           fi
           exit "$status"
 
