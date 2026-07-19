@@ -87,9 +87,9 @@ struct Movie: Codable, Identifiable, Equatable {
         totalEpisodes = try c.decodeFlexibleInt(.totalEpisodes)
         partNumber = try c.decodeFlexibleInt(.partNumber)
         genres = try c.decodeStringList(.genres)
-        cast = try c.decodeIfPresent([MoviePerson].self, forKey: .cast) ?? []
-        directors = try c.decodeIfPresent([MoviePerson].self, forKey: .directors) ?? []
-        episodes = try c.decodeIfPresent([EpisodeServer].self, forKey: .episodes) ?? []
+        cast = try c.decodeFlexibleArray(.cast, as: MoviePerson.self)
+        directors = try c.decodeFlexibleArray(.directors, as: MoviePerson.self)
+        episodes = try c.decodeFlexibleArray(.episodes, as: EpisodeServer.self)
         related = try c.decodeIfPresent([Movie].self, forKey: .related) ?? []
         collection = try c.decodeIfPresent(MovieCollection.self, forKey: .collection)
     }
@@ -170,6 +170,17 @@ struct EpisodeAudioSource: Codable, Equatable, Identifiable {
 }
 
 private extension KeyedDecodingContainer {
+    func decodeFlexibleArray<Element: Decodable>(_ key: Key, as type: Element.Type) throws -> [Element] {
+        if !contains(key) || (try? decodeNil(forKey: key)) == true { return [] }
+        if let values = try? decode([Element].self, forKey: key) { return values }
+        if let raw = try? decode(String.self, forKey: key) {
+            let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, text != "null", let data = text.data(using: .utf8) else { return [] }
+            return (try? JSONDecoder.cineViet.decode([Element].self, from: data)) ?? []
+        }
+        return []
+    }
+
     func decodeFlexibleString(_ key: Key) throws -> String? {
         if let value = try decodeIfPresent(String.self, forKey: key) { return value }
         if let value = try decodeIfPresent(Int.self, forKey: key) { return String(value) }

@@ -12,6 +12,7 @@ final class HomeViewModel: ObservableObject {
 
     @Published private(set) var state: State = .idle
     @Published var selectedMovie: Movie?
+    private var sectionErrors: [String] = []
 
     let movieService: MovieServicing
 
@@ -22,6 +23,7 @@ final class HomeViewModel: ObservableObject {
     func load(force: Bool = false) async {
         if !force, case .loaded = state { return }
         state = .loading
+        sectionErrors = []
 
         async let featured = fetch(MovieListQuery(limit: 10, featured: "1"))
         async let latest = fetch(MovieListQuery(limit: 22))
@@ -42,7 +44,12 @@ final class HomeViewModel: ObservableObject {
             tvShows: tvShows,
             bilingual: bilingual
         )
-        state = data.isEmpty ? .failed("Chưa có dữ liệu phim.") : .loaded(data)
+        if data.isEmpty {
+            let detail = sectionErrors.first ?? "API không trả về phim."
+            state = .failed("Không tải được trang chủ: \(detail)")
+        } else {
+            state = .loaded(data)
+        }
     }
 
     func retry() async {
@@ -55,6 +62,7 @@ final class HomeViewModel: ObservableObject {
         } catch {
             // Flutter loads Home sections independently and keeps successful
             // sections visible when one request fails.
+            sectionErrors.append(error.localizedDescription)
             return []
         }
     }
