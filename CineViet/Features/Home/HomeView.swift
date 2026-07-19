@@ -6,6 +6,7 @@ struct HomeView: View {
     let watchHistoryService: WatchHistoryServicing
     let libraryService: LibraryServicing
     @State private var featuredIndex = 0
+    @State private var catalogPreset: CatalogPreset?
 
     init(movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing, logout: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(movieService: movieService, watchHistoryService: watchHistoryService))
@@ -38,6 +39,9 @@ struct HomeView: View {
                     if let movie = viewModel.selectedMovie {
                         MovieDetailView(movie: movie, movieService: viewModel.movieService, watchHistoryService: watchHistoryService, libraryService: libraryService)
                     }
+                }
+                .navigationDestination(item: $catalogPreset) { preset in
+                    CatalogView(movieService: viewModel.movieService, watchHistoryService: watchHistoryService, libraryService: libraryService, preset: preset)
                 }
         }
         .tint(CineVietTheme.accent)
@@ -95,13 +99,12 @@ struct HomeView: View {
 
     private var categoryChips: some View {
         ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 9) {
-            categoryChip("Tất cả", selected: true); categoryChip("Phim bộ"); categoryChip("Phim lẻ"); categoryChip("Chiếu rạp"); categoryChip("Hoạt hình"); categoryChip("Song ngữ")
+            categoryChip("Tất cả", preset: .all); categoryChip("Phim bộ", preset: .series); categoryChip("Phim lẻ", preset: .single); categoryChip("Chiếu rạp", preset: .cinema); categoryChip("Hoạt hình", preset: .animation); categoryChip("Song ngữ", preset: .bilingual)
         }.padding(.horizontal, 18) }
     }
 
-    private func categoryChip(_ title: String, selected: Bool = false) -> some View {
-        Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(selected ? .black : CineVietTheme.textMuted).padding(.horizontal, 15).padding(.vertical, 9)
-            .background(selected ? CineVietTheme.accent : CineVietTheme.panel, in: Capsule()).overlay { if !selected { Capsule().stroke(CineVietTheme.border) } }
+    private func categoryChip(_ title: String, preset: CatalogPreset) -> some View {
+        Button { catalogPreset = preset } label: { Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted).padding(.horizontal, 15).padding(.vertical, 9).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } }
     }
 
     private func featuredCarousel(_ movies: [Movie]) -> some View {
@@ -153,7 +156,7 @@ struct HomeView: View {
 
     private func movieSection(_ section: HomeSection) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            GlassSectionHeader(title: section.title)
+            HStack { GlassSectionHeader(title: section.title); Spacer(); Button("Xem tất cả") { catalogPreset = preset(for: section.title) }.font(.caption.bold()).foregroundStyle(CineVietTheme.accent).padding(.trailing, 18) }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(section.movies) { movie in
@@ -164,6 +167,16 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
             }
         }
+    }
+
+    private func preset(for title: String) -> CatalogPreset {
+        let value = title.lowercased()
+        if value.contains("phim bộ") { return .series }
+        if value.contains("phim lẻ") { return .single }
+        if value.contains("hoạt hình") { return .animation }
+        if value.contains("chiếu rạp") { return .cinema }
+        if value.contains("song ngữ") { return .bilingual }
+        return .all
     }
 
     private var homeBackground: some View {
