@@ -39,6 +39,22 @@ struct MovieListQuery {
 
 struct MovieListResponse: Decodable {
     let movies: [Movie]
+
+    private enum CodingKeys: String, CodingKey { case movies }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        var rows = try container.nestedUnkeyedContainer(forKey: .movies)
+        var decoded: [Movie] = []
+        while !rows.isAtEnd {
+            if let movie = try? rows.decode(Movie.self) {
+                decoded.append(movie)
+            } else {
+                _ = try? rows.decode(JSONValue.self)
+            }
+        }
+        movies = decoded
+    }
 }
 
 final class MovieService: MovieServicing {

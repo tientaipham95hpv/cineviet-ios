@@ -66,10 +66,10 @@ struct Movie: Codable, Identifiable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeFlexibleInt(.id) ?? 0
-        title = try c.decodeIfPresent(String.self, forKey: .title) ?? "Không tên"
+        title = try c.decodeFlexibleString(.title)?.nonEmpty ?? "Không tên"
         slug = try c.decodeFlexibleString(.slug) ?? String(id)
-        titleEn = try c.decodeIfPresent(String.self, forKey: .titleEn) ?? ""
-        description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        titleEn = try c.decodeFlexibleString(.titleEn) ?? ""
+        description = try c.decodeFlexibleString(.description) ?? ""
         tmdbId = try c.decodeFlexibleString(.tmdbId) ?? ""
         imdbId = try c.decodeFlexibleString(.imdbId) ?? ""
         poster = try c.decodeFlexibleString(.poster) ?? ""
@@ -182,29 +182,31 @@ private extension KeyedDecodingContainer {
     }
 
     func decodeFlexibleString(_ key: Key) throws -> String? {
-        if let value = try decodeIfPresent(String.self, forKey: key) { return value }
-        if let value = try decodeIfPresent(Int.self, forKey: key) { return String(value) }
-        if let value = try decodeIfPresent(Double.self, forKey: key) { return String(value) }
+        if let value = try? decode(String.self, forKey: key) { return value }
+        if let value = try? decode(Int.self, forKey: key) { return String(value) }
+        if let value = try? decode(Double.self, forKey: key) { return String(value) }
+        if let value = try? decode(Bool.self, forKey: key) { return String(value) }
         return nil
     }
 
     func decodeFlexibleInt(_ key: Key) throws -> Int? {
-        if let value = try decodeIfPresent(Int.self, forKey: key) { return value }
-        if let value = try decodeIfPresent(Double.self, forKey: key) { return Int(value) }
-        if let value = try decodeIfPresent(String.self, forKey: key) { return Int(value) }
+        if let value = try? decode(Int.self, forKey: key) { return value }
+        if let value = try? decode(Double.self, forKey: key) { return Int(value) }
+        if let value = try? decode(String.self, forKey: key) { return Int(value) }
+        if let value = try? decode(Bool.self, forKey: key) { return value ? 1 : 0 }
         return nil
     }
 
     func decodeFlexibleDouble(_ key: Key) throws -> Double? {
-        if let value = try decodeIfPresent(Double.self, forKey: key) { return value }
-        if let value = try decodeIfPresent(Int.self, forKey: key) { return Double(value) }
-        if let value = try decodeIfPresent(String.self, forKey: key) { return Double(value) }
+        if let value = try? decode(Double.self, forKey: key) { return value }
+        if let value = try? decode(Int.self, forKey: key) { return Double(value) }
+        if let value = try? decode(String.self, forKey: key) { return Double(value) }
         return nil
     }
 
     func decodeStringList(_ key: Key) throws -> [String] {
-        if let value = try decodeIfPresent([String].self, forKey: key) { return value }
-        if let value = try decodeIfPresent(String.self, forKey: key) {
+        if let value = try? decode([String].self, forKey: key) { return value }
+        if let value = try? decode(String.self, forKey: key) {
             return value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         }
         return []
