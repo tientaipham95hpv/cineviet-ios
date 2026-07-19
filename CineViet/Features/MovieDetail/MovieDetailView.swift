@@ -76,26 +76,26 @@ struct MovieDetailView: View {
     }
 
     private func actions(_ movie: Movie) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) {
+        ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 10) {
             action(viewModel.isFavorite ? "heart.fill" : "heart", viewModel.isFavorite ? "Đã thích" : "Yêu thích", busy: viewModel.isFavoriteBusy) { Task { await viewModel.toggleFavorite() } }
             Menu { ForEach(viewModel.playlists) { list in Button(list.name) { Task { await viewModel.addToPlaylist(list) } } }; Divider(); Button("Tạo playlist mới…") { showingNewPlaylist = true } } label: { actionLabel("plus", "Playlist") }
             action("star", "Đánh giá") { showingRating = true }; action("bubble.left", "Bình luận") { showingComments = true }
             ShareLink(item: canonicalURL(movie), subject: Text(movie.title), message: Text("Xem \(movie.title) trên CineViet")) { actionLabel("square.and.arrow.up", "Chia sẻ") }
-        }.padding(.horizontal, 14) }
+        }.padding(.horizontal, 20).padding(.vertical, 3) }
     }
 
-    private func action(_ icon: String, _ text: String, busy: Bool = false, perform: @escaping () -> Void) -> some View { Button(action: perform) { if busy { ProgressView().tint(.white).frame(width: 78).frame(minHeight: 64) } else { actionLabel(icon, text) } }.buttonStyle(DetailActionStyle()).disabled(busy).accessibilityLabel(text) }
-    private func actionLabel(_ icon: String, _ text: String) -> some View { VStack(spacing: 7) { Image(systemName: icon).font(.title3).frame(height: 25); Text(text).font(.caption2).lineLimit(1) }.frame(width: 78).frame(minHeight: 64).contentShape(Rectangle()) }
+    private func action(_ icon: String, _ text: String, busy: Bool = false, perform: @escaping () -> Void) -> some View { Button(action: perform) { if busy { ProgressView().tint(.white).frame(width: 84).frame(minHeight: 68) } else { actionLabel(icon, text) } }.buttonStyle(DetailActionStyle()).disabled(busy).accessibilityLabel(text) }
+    private func actionLabel(_ icon: String, _ text: String) -> some View { VStack(spacing: 7) { Image(systemName: icon).font(.system(size: 17, weight: .semibold)).frame(height: 23); Text(text).font(.system(size: 11, weight: .medium, design: .rounded)).lineLimit(1).minimumScaleFactor(0.8) }.frame(width: 84).frame(minHeight: 68).contentShape(Rectangle()) }
     private func canonicalURL(_ movie: Movie) -> URL { AppEnvironment.siteBaseURL.appendingPathComponent("movie").appendingPathComponent(movie.routeKey) }
 
     @ViewBuilder private func tabs(_ movie: Movie) -> some View {
         let available = DetailSection.allCases.filter { $0 == .episodes ? !movie.episodes.isEmpty : ($0 == .cast ? (!movie.cast.isEmpty || !movie.directors.isEmpty) : !movie.related.isEmpty) }
-        if !available.isEmpty { HStack(spacing: 0) { ForEach(available) { item in Button { animate { selectedSection = item } } label: { Text(item.rawValue).font(.subheadline.weight(selectedSection == item ? .bold : .regular)).foregroundStyle(selectedSection == item ? CineVietTheme.accent : CineVietTheme.textMuted).frame(maxWidth: .infinity, minHeight: 50).overlay(alignment: .bottom) { if selectedSection == item { Capsule().fill(CineVietTheme.accent).frame(height: 3).padding(.horizontal, 14) } } } } }.overlay(alignment: .bottom) { Rectangle().fill(CineVietTheme.border).frame(height: 1) }.id("detail-sections").onAppear { if !available.contains(selectedSection), let first = available.first { selectedSection = first } } }
+        if !available.isEmpty { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { ForEach(available) { item in Button { animate { selectedSection = item } } label: { Text(item.rawValue).font(.system(size: 14, weight: selectedSection == item ? .bold : .medium, design: .rounded)).foregroundStyle(selectedSection == item ? .black : CineVietTheme.textMuted).padding(.horizontal, 18).frame(minHeight: 42).background(selectedSection == item ? CineVietTheme.accent : CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(selectedSection == item ? CineVietTheme.accent : CineVietTheme.border, lineWidth: 0.8) } }.buttonStyle(.plain) } }.padding(.horizontal, 20).padding(.vertical, 4) }.id("detail-sections").onAppear { if !available.contains(selectedSection), let first = available.first { selectedSection = first } } }
     }
 
     @ViewBuilder private func section(_ movie: Movie) -> some View {
         switch selectedSection {
-        case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { HStack { Text(movie.episodeCurrent.trimmedNonEmpty ?? "Danh sách tập").font(.headline); Spacer(); if movie.episodes.count > 1 { Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").padding(10).overlay { RoundedRectangle(cornerRadius: 10).stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.subheadline.bold()).frame(maxWidth: .infinity, minHeight: 58).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(CineVietTheme.border) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? 0.45 : 1) } } }.padding(20) }
+        case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 16) { HStack(spacing: 12) { Text(movie.episodeCurrent.trimmedNonEmpty ?? "Danh sách tập").font(.headline); Spacer(minLength: 8); if movie.episodes.count > 1 { Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").font(.subheadline.weight(.semibold)).lineLimit(1).padding(.horizontal, 14).frame(minHeight: 42).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.system(size: 14, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity, minHeight: 56).background(LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous)).overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(CineVietTheme.border.opacity(0.9)) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? 0.45 : 1) } } }.padding(.horizontal, 20).padding(.top, 12) }
         case .cast: VStack(alignment: .leading, spacing: 14) { ForEach(movie.directors.filter { !$0.name.isEmpty }, id: \.name) { Text("Đạo diễn: \($0.name)").font(.subheadline) }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92))], spacing: 16) { ForEach(movie.cast.filter { !$0.name.isEmpty }.prefix(30), id: \.name) { person in VStack { Circle().fill(CineVietTheme.panel).frame(width: 64, height: 64).overlay { Text(String(person.name.prefix(1))).font(.title2.bold()).foregroundStyle(CineVietTheme.accent) }; Text(person.name).font(.caption).multilineTextAlignment(.center).lineLimit(2) } } } }.padding(20)
         case .related: ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movie.related) { MovieCardView(movie: $0) } }.padding(20) }
         }
@@ -111,8 +111,9 @@ private struct DetailCTAStyle: ButtonStyle {
         configuration.label
             .font(.headline.bold())
             .foregroundStyle(primary ? .black : .white)
-            .background(primary ? CineVietTheme.accent : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 15))
-            .overlay { RoundedRectangle(cornerRadius: 15).stroke(primary ? CineVietTheme.accent : .white.opacity(0.25)) }
+            .background(primary ? LinearGradient(colors: [CineVietTheme.accent, CineVietTheme.accent.opacity(0.82)], startPoint: .topLeading, endPoint: .bottomTrailing) : LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(primary ? .white.opacity(0.16) : .white.opacity(0.13), lineWidth: 0.8) }
+            .shadow(color: primary ? CineVietTheme.accent.opacity(0.18) : .black.opacity(0.2), radius: configuration.isPressed ? 4 : 10, y: configuration.isPressed ? 2 : 5)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
@@ -125,8 +126,9 @@ private struct DetailActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
-            .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 14))
-            .overlay { RoundedRectangle(cornerRadius: 14).stroke(CineVietTheme.border) }
+            .background(LinearGradient(colors: [CineVietTheme.panel.opacity(0.98), CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(configuration.isPressed ? 0.08 : 0.13), lineWidth: 0.8) }
+            .shadow(color: .black.opacity(configuration.isPressed ? 0.12 : 0.24), radius: configuration.isPressed ? 3 : 9, y: configuration.isPressed ? 1 : 4)
             .scaleEffect(configuration.isPressed ? 0.95 : 1)
             .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.5)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
@@ -145,7 +147,7 @@ private struct EpisodeButtonStyle: ButtonStyle {
 
 private struct RatingSheet: View {
     @Environment(\.dismiss) private var dismiss; @ObservedObject var viewModel: MovieDetailViewModel
-    var body: some View { NavigationStack { VStack(spacing: 22) { if let stats = viewModel.ratingStats { Text(String(format: "%0.1f / 10", stats.average)).font(.largeTitle.bold()); if stats.total > 0 { Text("\(stats.total) lượt đánh giá").foregroundStyle(.secondary) } }; LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 12) { ForEach(1...10, id: \.self) { value in Button { Task { await viewModel.rate(value) } } label: { VStack { Image(systemName: (viewModel.ratingStats?.userRating ?? 0) >= value ? "star.fill" : "star"); Text("\(value)") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(.bordered).tint(.yellow).disabled(viewModel.isSubmitting) } }; Spacer() }.padding().background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white).navigationTitle("Đánh giá phim").toolbar { Button("Đóng") { dismiss() } } }.presentationDetents([.medium]) }
+    var body: some View { NavigationStack { VStack(spacing: 22) { if let stats = viewModel.ratingStats { Text(String(format: "%0.1f / 10", stats.average)).font(.system(size: 40, weight: .bold, design: .rounded)).foregroundStyle(CineVietTheme.accent); if stats.total > 0 { Text("\(stats.total) lượt đánh giá").foregroundStyle(CineVietTheme.textMuted) } }; LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 10) { ForEach(1...10, id: \.self) { value in Button { Task { await viewModel.rate(value) } } label: { VStack(spacing: 4) { Image(systemName: (viewModel.ratingStats?.userRating ?? 0) >= value ? "star.fill" : "star").font(.headline); Text("\(value)").font(.caption.bold()) }.frame(maxWidth: .infinity, minHeight: 54).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 14, style: .continuous)) }.buttonStyle(.plain).tint(.yellow).disabled(viewModel.isSubmitting) } }; Spacer() }.padding(20).background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white).navigationTitle("Đánh giá phim").toolbar { Button("Đóng") { dismiss() } } }.presentationDetents([.medium]) }
 }
 
 private struct CommentsSheet: View {
