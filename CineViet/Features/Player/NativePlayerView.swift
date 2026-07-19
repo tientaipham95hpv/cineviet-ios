@@ -61,7 +61,7 @@ struct PictureInPicturePlayerView: UIViewRepresentable {
         func attach(to layer: AVPlayerLayer) {
             guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
             attachedLayer = layer
-            let controller = AVPictureInPictureController(playerLayer: layer)
+            guard let controller = AVPictureInPictureController(playerLayer: layer) else { return }
             controller.canStartPictureInPictureAutomaticallyFromInline = true
             controller.delegate = self
             pictureInPictureController = controller
