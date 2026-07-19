@@ -40,8 +40,8 @@ struct HomeView: View {
                         MovieDetailView(movie: movie, movieService: viewModel.movieService, watchHistoryService: watchHistoryService, libraryService: libraryService)
                     }
                 }
-                .navigationDestination(item: $catalogPreset) { preset in
-                    CatalogView(movieService: viewModel.movieService, watchHistoryService: watchHistoryService, libraryService: libraryService, preset: preset)
+                .navigationDestination(isPresented: Binding(get: { catalogPreset != nil }, set: { if !$0 { catalogPreset = nil } })) {
+                    if let preset = catalogPreset { CatalogView(movieService: viewModel.movieService, watchHistoryService: watchHistoryService, libraryService: libraryService, preset: preset) }
                 }
         }
         .tint(CineVietTheme.accent)
