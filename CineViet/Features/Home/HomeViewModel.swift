@@ -13,7 +13,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var state: State = .idle
     @Published var selectedMovie: Movie?
 
-    private let movieService: MovieServicing
+    let movieService: MovieServicing
 
     init(movieService: MovieServicing) {
         self.movieService = movieService

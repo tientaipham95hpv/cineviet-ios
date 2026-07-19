@@ -31,7 +31,7 @@ struct HomeView: View {
                     )
                 ) {
                     if let movie = viewModel.selectedMovie {
-                        MovieDetailPlaceholderView(movie: movie)
+                        MovieDetailView(movie: movie, movieService: viewModel.movieService)
                     }
                 }
         }
@@ -125,38 +125,5 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
             }
         }
-    }
-}
-
-private struct MovieDetailPlaceholderView: View {
-    let movie: Movie
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                AsyncImage(url: movie.backdropURL) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
-                        Color.white.opacity(0.08)
-                    }
-                }
-                .frame(height: 260)
-                .clipped()
-                Text(movie.title).font(.largeTitle.bold())
-                if !movie.metadataLine.isEmpty {
-                    Text(movie.metadataLine).foregroundStyle(.secondary)
-                }
-                Text(movie.description)
-                    .foregroundStyle(.secondary)
-                Text("Movie Detail đầy đủ sẽ được triển khai ở module tiếp theo.")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-            }
-            .padding(.bottom, 32)
-        }
-        .background(Color.black.ignoresSafeArea())
-        .navigationTitle(movie.title)
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
