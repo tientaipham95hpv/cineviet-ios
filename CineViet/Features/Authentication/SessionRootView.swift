@@ -29,6 +29,7 @@ struct SessionRootView: View {
                 HomeView(
                     movieService: container.movieService,
                     watchHistoryService: container.watchHistoryService,
+                    libraryService: container.libraryService,
                     logout: viewModel.logout
                 )
             }

@@ -1,0 +1,73 @@
+import Foundation
+
+struct CinePlaylist: Codable, Identifiable, Equatable {
+    let id: Int
+    let name: String
+    let slug: String
+    let description: String
+    let cover: String
+    let movieCount: Int
+    let isPublic: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, slug, description, cover, movieCount = "movie_count", isPublic = "is_public"
+    }
+}
+
+struct PlaylistDetail: Equatable {
+    let playlist: CinePlaylist
+    let movies: [Movie]
+}
+
+protocol LibraryServicing {
+    func favoriteIDs() async -> Set<Int>
+    func toggleFavorite(movieID: Int, add: Bool) async throws
+    func playlists() async throws -> [CinePlaylist]
+    func createPlaylist(name: String, description: String, isPublic: Bool) async throws -> CinePlaylist
+    func add(movieID: Int, to playlistID: Int) async throws
+}
+
+struct LibraryService: LibraryServicing {
+    let apiClient: APIClient
+
+    func favoriteIDs() async -> Set<Int> {
+        let request = APIRequest(method: .get, path: "/user/favorite-ids", requiresAuthentication: true)
+        guard let response: JSONValue = try? await apiClient.send(request) else { return [] }
+        let values = response.object?["ids"]?.array ?? response.object?["movie_ids"]?.array ?? response.array ?? []
+        return Set(values.compactMap { $0.intValue }.filter { $0 > 0 })
+    }
+
+    func toggleFavorite(movieID: Int, add: Bool) async throws {
+        let method: HTTPMethod = add ? .post : .delete
+        let request = APIRequest(method: method, path: "/user/favorites/\(movieID)", requiresAuthentication: true)
+        try await apiClient.sendVoid(request)
+    }
+
+    func playlists() async throws -> [CinePlaylist] {
+        let request = APIRequest(method: .get, path: "/playlists/my", requiresAuthentication: true)
+        return try await apiClient.send(request)
+    }
+
+    func createPlaylist(name: String, description: String, isPublic: Bool) async throws -> CinePlaylist {
+        let body = CreatePlaylistPayload(name: name.trimmingCharacters(in: .whitespacesAndNewlines), description: description, isPublic: isPublic)
+        let request = try APIRequest.json(method: .post, path: "/playlists", body: body, requiresAuthentication: true)
+        return try await apiClient.send(request)
+    }
+
+    func add(movieID: Int, to playlistID: Int) async throws {
+        let body = AddMoviePayload(movieID: movieID)
+        let request = try APIRequest.json(method: .post, path: "/playlists/\(playlistID)/movies", body: body, requiresAuthentication: true)
+        try await apiClient.sendVoid(request)
+    }
+}
+
+private struct CreatePlaylistPayload: Encodable {
+    let name: String
+    let description: String
+    let isPublic: Bool
+    enum CodingKeys: String, CodingKey { case name, description, isPublic = "is_public" }
+}
+private struct AddMoviePayload: Encodable {
+    let movieID: Int
+    enum CodingKeys: String, CodingKey { case movieID = "movie_id" }
+}

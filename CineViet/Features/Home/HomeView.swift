@@ -4,10 +4,12 @@ struct HomeView: View {
     @StateObject private var viewModel: HomeViewModel
     let logout: () -> Void
     let watchHistoryService: WatchHistoryServicing
+    let libraryService: LibraryServicing
 
-    init(movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, logout: @escaping () -> Void) {
+    init(movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing, logout: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(movieService: movieService))
         self.watchHistoryService = watchHistoryService
+        self.libraryService = libraryService
         self.logout = logout
     }
 
@@ -33,7 +35,7 @@ struct HomeView: View {
                     )
                 ) {
                     if let movie = viewModel.selectedMovie {
-                        MovieDetailView(movie: movie, movieService: viewModel.movieService, watchHistoryService: watchHistoryService)
+                        MovieDetailView(movie: movie, movieService: viewModel.movieService, watchHistoryService: watchHistoryService, libraryService: libraryService)
                     }
                 }
         }

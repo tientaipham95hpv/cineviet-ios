@@ -3,9 +3,11 @@ import SwiftUI
 struct MovieDetailView: View {
     @StateObject private var viewModel: MovieDetailViewModel
     let watchHistoryService: WatchHistoryServicing
+    @State private var newPlaylistName = ""
+    @State private var showingNewPlaylist = false
 
-    init(movie: Movie, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing) {
-        _viewModel = StateObject(wrappedValue: MovieDetailViewModel(movie: movie, movieService: movieService))
+    init(movie: Movie, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing) {
+        _viewModel = StateObject(wrappedValue: MovieDetailViewModel(movie: movie, movieService: movieService, libraryService: libraryService))
         self.watchHistoryService = watchHistoryService
     }
 
@@ -41,6 +43,15 @@ struct MovieDetailView: View {
         .navigationTitle(viewModel.displayedMovie.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
+        .alert("Tạo playlist", isPresented: $showingNewPlaylist) {
+            TextField("Tên playlist", text: $newPlaylistName)
+            Button("Tạo và thêm phim") {
+                let name = newPlaylistName
+                newPlaylistName = ""
+                Task { await viewModel.createPlaylist(name: name) }
+            }.disabled(newPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Huỷ", role: .cancel) { }
+        }
     }
 
     private var detailContent: some View {
@@ -66,6 +77,24 @@ struct MovieDetailView: View {
                 if !movie.metadataLine.isEmpty { Text(movie.metadataLine).foregroundStyle(.orange) }
                 if !movie.genres.isEmpty { Text(movie.genres.joined(separator: " • ")).foregroundStyle(.secondary) }
                 if !movie.description.isEmpty { Text(movie.description).lineSpacing(4) }
+                HStack {
+                    Button { Task { await viewModel.toggleFavorite() } } label: {
+                        Label(viewModel.isFavorite ? "Đã yêu thích" : "Yêu thích", systemImage: viewModel.isFavorite ? "heart.fill" : "heart")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    Menu {
+                        ForEach(viewModel.playlists) { playlist in
+                            Button(playlist.name) { Task { await viewModel.addToPlaylist(playlist) } }
+                        }
+                        Divider()
+                        Button("Tạo playlist mới…") { showingNewPlaylist = true }
+                    } label: { Label("Playlist", systemImage: "text.badge.plus") }
+                    .buttonStyle(.bordered)
+                }
+                if let error = viewModel.libraryError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
             }
             .padding(.horizontal, 16)
 

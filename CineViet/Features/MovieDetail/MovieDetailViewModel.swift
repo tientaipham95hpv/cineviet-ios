@@ -12,15 +12,20 @@ final class MovieDetailViewModel: ObservableObject {
     @Published private(set) var state: State
     @Published var selectedServerIndex = 0
     @Published var selectedEpisode: EpisodeItem?
+    @Published private(set) var isFavorite = false
+    @Published private(set) var playlists: [CinePlaylist] = []
+    @Published private(set) var libraryError: String?
 
     private let movieService: MovieServicing
     private let routeKey: String
     private let initialMovie: Movie
+    private let libraryService: LibraryServicing
 
-    init(movie: Movie, movieService: MovieServicing) {
+    init(movie: Movie, movieService: MovieServicing, libraryService: LibraryServicing) {
         initialMovie = movie
         routeKey = movie.routeKey
         self.movieService = movieService
+        self.libraryService = libraryService
         state = .loading
     }
 
@@ -41,9 +46,34 @@ final class MovieDetailViewModel: ObservableObject {
             let movie = try await movieService.detail(idOrSlug: routeKey)
             selectedServerIndex = 0
             state = .loaded(movie)
+            async let ids = libraryService.favoriteIDs()
+            async let lists = try? libraryService.playlists()
+            isFavorite = await ids.contains(movie.id)
+            playlists = await lists ?? []
         } catch {
             state = .failed(error.localizedDescription)
         }
+    }
+
+    func toggleFavorite() async {
+        let next = !isFavorite
+        do {
+            try await libraryService.toggleFavorite(movieID: displayedMovie.id, add: next)
+            isFavorite = next
+        } catch { libraryError = error.localizedDescription }
+    }
+
+    func addToPlaylist(_ playlist: CinePlaylist) async {
+        do { try await libraryService.add(movieID: displayedMovie.id, to: playlist.id) }
+        catch { libraryError = error.localizedDescription }
+    }
+
+    func createPlaylist(name: String) async {
+        do {
+            let playlist = try await libraryService.createPlaylist(name: name, description: "", isPublic: false)
+            playlists.append(playlist)
+            try await libraryService.add(movieID: displayedMovie.id, to: playlist.id)
+        } catch { libraryError = error.localizedDescription }
     }
 
     func retry() async { await load() }
