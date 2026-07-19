@@ -39,14 +39,19 @@ struct HomeView: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let message):
-            ContentUnavailableView {
-                Label("Không tải được trang chủ", systemImage: "wifi.exclamationmark")
-            } description: {
+            VStack(spacing: 16) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 42))
+                    .foregroundStyle(.orange)
+                Text("Không tải được trang chủ")
+                    .font(.title2.bold())
                 Text(message)
-            } actions: {
+                    .foregroundStyle(.secondary)
                 Button("Thử lại") { Task { await viewModel.retry() } }
+                    .buttonStyle(.borderedProminent)
             }
             .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .loaded(let data):
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 30) {
