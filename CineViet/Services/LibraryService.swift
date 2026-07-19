@@ -20,6 +20,7 @@ struct PlaylistDetail: Equatable {
 }
 
 protocol LibraryServicing {
+    func favorites() async throws -> [Movie]
     func favoriteIDs() async -> Set<Int>
     func toggleFavorite(movieID: Int, add: Bool) async throws
     func playlists() async throws -> [CinePlaylist]
@@ -29,6 +30,12 @@ protocol LibraryServicing {
 
 struct LibraryService: LibraryServicing {
     let apiClient: APIClient
+
+    func favorites() async throws -> [Movie] {
+        let request = APIRequest(method: .get, path: "/user/favorites", requiresAuthentication: true)
+        let response: FavoriteMoviesEnvelope = try await apiClient.send(request)
+        return response.movies
+    }
 
     func favoriteIDs() async -> Set<Int> {
         let request = APIRequest(method: .get, path: "/user/favorite-ids", requiresAuthentication: true)
@@ -58,6 +65,22 @@ struct LibraryService: LibraryServicing {
         let body = AddMoviePayload(movieID: movieID)
         let request = try APIRequest.json(method: .post, path: "/playlists/\(playlistID)/movies", body: body, requiresAuthentication: true)
         let _: JSONValue = try await apiClient.send(request)
+    }
+}
+
+private struct FavoriteMoviesEnvelope: Decodable {
+    let movies: [Movie]
+    private enum CodingKeys: String, CodingKey { case movies, favorites }
+
+    init(from decoder: Decoder) throws {
+        if let list = try? decoder.singleValueContainer().decode([Movie].self) {
+            movies = list
+            return
+        }
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        movies = (try? values.decode([Movie].self, forKey: .movies))
+            ?? (try? values.decode([Movie].self, forKey: .favorites))
+            ?? []
     }
 }
 

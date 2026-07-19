@@ -15,9 +15,11 @@ final class HomeViewModel: ObservableObject {
     private var sectionErrors: [String] = []
 
     let movieService: MovieServicing
+    private let watchHistoryService: WatchHistoryServicing
 
-    init(movieService: MovieServicing) {
+    init(movieService: MovieServicing, watchHistoryService: WatchHistoryServicing) {
         self.movieService = movieService
+        self.watchHistoryService = watchHistoryService
     }
 
     func load(force: Bool = false) async {
@@ -33,8 +35,19 @@ final class HomeViewModel: ObservableObject {
         async let anime = fetch(MovieListQuery(limit: 18, type: "anime"))
         async let tvShows = fetch(MovieListQuery(limit: 18, type: "tvshows"))
         async let bilingual = fetch(MovieListQuery(limit: 18, bilingual: "1"))
+        async let history = watchHistoryService.continueWatching(limit: 12)
 
-        let data = await HomeData(
+        let historyItems = await history
+        let continueWatching = await withTaskGroup(of: Movie?.self) { group in
+            for item in historyItems.prefix(12) {
+                group.addTask { try? await self.movieService.detail(idOrSlug: String(item.movieId)) }
+            }
+            var movies: [Movie] = []
+            for await movie in group { if let movie { movies.append(movie) } }
+            return movies
+        }
+
+        var data = await HomeData(
             featured: featured,
             latest: latest,
             cinema: cinema,
@@ -44,6 +57,7 @@ final class HomeViewModel: ObservableObject {
             tvShows: tvShows,
             bilingual: bilingual
         )
+        data.continueWatching = continueWatching
         if data.isEmpty {
             let detail = sectionErrors.first ?? "API không trả về phim."
             state = .failed("Không tải được trang chủ: \(detail)")

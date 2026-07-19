@@ -25,8 +25,9 @@ struct SessionRootView: View {
                     .background(Color.black)
             case .signedOut:
                 LoginView(viewModel: viewModel)
-            case .signedIn:
-                HomeView(
+            case .signedIn(let user):
+                MainTabView(
+                    user: user,
                     movieService: container.movieService,
                     watchHistoryService: container.watchHistoryService,
                     libraryService: container.libraryService,

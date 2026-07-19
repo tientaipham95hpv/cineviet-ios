@@ -7,7 +7,7 @@ struct HomeView: View {
     let libraryService: LibraryServicing
 
     init(movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing, logout: @escaping () -> Void) {
-        _viewModel = StateObject(wrappedValue: HomeViewModel(movieService: movieService))
+        _viewModel = StateObject(wrappedValue: HomeViewModel(movieService: movieService, watchHistoryService: watchHistoryService))
         self.watchHistoryService = watchHistoryService
         self.libraryService = libraryService
         self.logout = logout

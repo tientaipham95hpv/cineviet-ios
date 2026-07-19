@@ -63,6 +63,7 @@ private struct WatchProgressPayload: Encodable {
 }
 
 protocol WatchHistoryServicing {
+    func continueWatching(limit: Int) async -> [WatchHistoryItem]
     func resume(movieId: Int) async -> WatchHistoryItem?
     func save(movie: Movie, server: EpisodeServer, serverIndex: Int, episode: EpisodeItem, position: Double, duration: Double) async
 }
@@ -70,11 +71,15 @@ protocol WatchHistoryServicing {
 struct WatchHistoryService: WatchHistoryServicing {
     let apiClient: APIClient
 
-    func resume(movieId: Int) async -> WatchHistoryItem? {
+    func continueWatching(limit: Int = 20) async -> [WatchHistoryItem] {
         var request = APIRequest(method: .get, path: "/history/continue-watching", requiresAuthentication: true)
-        request.queryItems = [URLQueryItem(name: "limit", value: "20")]
+        request.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         let envelope: WatchHistoryEnvelope? = try? await apiClient.send(request)
-        return envelope?.items.first { $0.movieId == movieId && $0.positionSeconds >= 3 && $0.durationSeconds > 0 && $0.positionSeconds / $0.durationSeconds < 0.95 }
+        return envelope?.items.filter { $0.movieId > 0 && $0.positionSeconds >= 3 && $0.durationSeconds > 0 && $0.positionSeconds / $0.durationSeconds < 0.95 } ?? []
+    }
+
+    func resume(movieId: Int) async -> WatchHistoryItem? {
+        await continueWatching(limit: 20).first { $0.movieId == movieId }
     }
 
     func save(movie: Movie, server: EpisodeServer, serverIndex: Int, episode: EpisodeItem, position: Double, duration: Double) async {

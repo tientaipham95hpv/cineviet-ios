@@ -2,7 +2,7 @@ import Foundation
 
 struct HomeSection: Identifiable, Equatable {
     enum Kind: String {
-        case latest, cinema, series, single, anime, tvShows, bilingual
+        case continueWatching, latest, cinema, series, single, anime, tvShows, bilingual
     }
 
     let kind: Kind
@@ -20,9 +20,11 @@ struct HomeData: Equatable {
     let anime: [Movie]
     let tvShows: [Movie]
     let bilingual: [Movie]
+    var continueWatching: [Movie] = []
 
     var sections: [HomeSection] {
         [
+            HomeSection(kind: .continueWatching, title: "Tiếp tục xem", movies: continueWatching),
             HomeSection(kind: .latest, title: "Mới cập nhật", movies: latest),
             HomeSection(kind: .cinema, title: "Phim chiếu rạp", movies: cinema),
             HomeSection(kind: .series, title: "Phim bộ", movies: series),
