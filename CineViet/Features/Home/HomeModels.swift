@@ -1,8 +1,18 @@
 import Foundation
 
+struct ContinueWatchingMovie: Identifiable, Equatable {
+    let movie: Movie
+    let history: WatchHistoryItem
+    var id: Int { movie.id }
+    var progress: Double {
+        guard history.durationSeconds > 0 else { return 0 }
+        return min(max(history.positionSeconds / history.durationSeconds, 0), 1)
+    }
+}
+
 struct HomeSection: Identifiable, Equatable {
     enum Kind: String {
-        case continueWatching, latest, cinema, series, single, anime, tvShows, bilingual
+        case latest, cinema, series, single, anime, tvShows, bilingual
     }
 
     let kind: Kind
@@ -20,11 +30,10 @@ struct HomeData: Equatable {
     let anime: [Movie]
     let tvShows: [Movie]
     let bilingual: [Movie]
-    var continueWatching: [Movie] = []
+    var continueWatching: [ContinueWatchingMovie] = []
 
     var sections: [HomeSection] {
         [
-            HomeSection(kind: .continueWatching, title: "Tiếp tục xem", movies: continueWatching),
             HomeSection(kind: .latest, title: "Mới cập nhật", movies: latest),
             HomeSection(kind: .cinema, title: "Phim chiếu rạp", movies: cinema),
             HomeSection(kind: .series, title: "Phim bộ", movies: series),

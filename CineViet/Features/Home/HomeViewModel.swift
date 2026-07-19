@@ -38,13 +38,16 @@ final class HomeViewModel: ObservableObject {
         async let history = watchHistoryService.continueWatching(limit: 12)
 
         let historyItems = await history
-        let continueWatching = await withTaskGroup(of: Movie?.self) { group in
-            for item in historyItems.prefix(12) {
-                group.addTask { try? await self.movieService.detail(idOrSlug: String(item.movieId)) }
+        let continueWatching = await withTaskGroup(of: (Int, ContinueWatchingMovie)?.self) { group in
+            for (position, item) in historyItems.prefix(12).enumerated() {
+                group.addTask {
+                    guard let movie = try? await self.movieService.detail(idOrSlug: String(item.movieId)) else { return nil }
+                    return (position, ContinueWatchingMovie(movie: movie, history: item))
+                }
             }
-            var movies: [Movie] = []
-            for await movie in group { if let movie { movies.append(movie) } }
-            return movies
+            var items: [(Int, ContinueWatchingMovie)] = []
+            for await item in group { if let item { items.append(item) } }
+            return items.sorted { $0.0 < $1.0 }.map(\.1)
         }
 
         var data = await HomeData(

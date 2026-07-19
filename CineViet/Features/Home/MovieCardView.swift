@@ -7,26 +7,42 @@ struct MovieCardView: View {
         VStack(alignment: .leading, spacing: 9) {
             ZStack(alignment: .bottomLeading) {
                 poster
-                LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .center, endPoint: .bottom)
+                LinearGradient(colors: [.clear, .black.opacity(0.88)], startPoint: .center, endPoint: .bottom)
                 if let episode = movie.episodeCurrent.nonEmpty {
-                    Text(episode).font(.caption2.bold()).lineLimit(1).padding(.horizontal, 7).padding(.vertical, 4)
-                        .background(.black.opacity(0.72), in: Capsule()).padding(8)
+                    Text(episode)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .padding(.horizontal, 7).padding(.vertical, 4)
+                        .background(.black.opacity(0.72), in: Capsule())
+                        .padding(8)
                 }
             }
-            .frame(width: 148, height: 216)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.2), lineWidth: 1) }
+            .frame(width: 142, height: 205)
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 0.8) }
             .overlay(alignment: .topTrailing) { qualityBadge }
-            .shadow(color: .black.opacity(0.42), radius: 14, y: 8)
+            .shadow(color: .black.opacity(0.34), radius: 12, y: 7)
 
-            Text(movie.title).font(.subheadline.weight(.bold)).foregroundStyle(.white).lineLimit(2).frame(width: 148, alignment: .leading)
-            HStack(spacing: 6) {
-                if let year = movie.releaseYear { Text(String(year)) }
-                if let rating = movie.rating { Label(String(format: "%.1f", rating), systemImage: "star.fill").foregroundStyle(CineVietTheme.accent) }
-            }.font(.caption2.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted)
+            Text(movie.title)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .frame(width: 142, minHeight: 34, alignment: .topLeading)
+            HStack(spacing: 7) {
+                if let year = movie.releaseYear, year > 1800 { Text(String(year)) }
+                if let rating = movie.rating, rating > 0 {
+                    Label(String(format: "%.1f", rating), systemImage: "star.fill")
+                        .foregroundStyle(CineVietTheme.accent)
+                }
+            }
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(CineVietTheme.textMuted)
         }
+        .frame(width: 142, alignment: .leading)
         .contentShape(Rectangle())
-        .accessibilityElement(children: .combine).accessibilityLabel(movie.title)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(movie.title)
+        .accessibilityAddTraits(.isButton)
     }
 
     @ViewBuilder private var poster: some View {
@@ -41,11 +57,20 @@ struct MovieCardView: View {
     }
 
     @ViewBuilder private var qualityBadge: some View {
-        if !movie.quality.isEmpty {
-            Text(movie.quality.uppercased()).font(.caption2.bold()).foregroundStyle(.black)
-                .padding(.horizontal, 7).padding(.vertical, 5).background(CineVietTheme.accent, in: RoundedRectangle(cornerRadius: 7)).padding(8)
+        if let quality = movie.quality.nonEmpty {
+            Text(quality.uppercased())
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 7).padding(.vertical, 5)
+                .background(CineVietTheme.accent, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .padding(7)
         }
     }
 
-    private var placeholder: some View { ZStack { CineVietTheme.panel; Image(systemName: "film").font(.title).foregroundStyle(CineVietTheme.textMuted) } }
+    private var placeholder: some View {
+        ZStack {
+            CineVietTheme.panel
+            Image(systemName: "film.fill").font(.title2).foregroundStyle(CineVietTheme.textMuted.opacity(0.6))
+        }
+    }
 }
