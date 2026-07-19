@@ -169,10 +169,6 @@ struct EpisodeAudioSource: Codable, Equatable, Identifiable {
     var id: String { "\(key)|\(url)" }
 }
 
-private extension String {
-    var nonEmpty: String? { isEmpty ? nil : self }
-}
-
 private extension KeyedDecodingContainer {
     func decodeFlexibleString(_ key: Key) throws -> String? {
         if let value = try decodeIfPresent(String.self, forKey: key) { return value }
