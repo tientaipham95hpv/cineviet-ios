@@ -182,28 +182,5 @@ struct RatingStats: Decodable, Equatable {
     }
 }
 
-private extension KeyedDecodingContainer {
-    func decodeFlexibleString(_ key: Key) throws -> String? {
-        if let value = try? decode(String.self, forKey: key) { return value }
-        if let value = try? decode(Int.self, forKey: key) { return String(value) }
-        if let value = try? decode(Double.self, forKey: key) { return String(value) }
-        return nil
-    }
-
-    func decodeFlexibleInt(_ key: Key) throws -> Int? {
-        if let value = try? decode(Int.self, forKey: key) { return value }
-        if let value = try? decode(Double.self, forKey: key) { return Int(value) }
-        if let value = try? decode(String.self, forKey: key) { return Int(value) }
-        return nil
-    }
-
-    func decodeFlexibleDouble(_ key: Key) throws -> Double? {
-        if let value = try? decode(Double.self, forKey: key) { return value }
-        if let value = try? decode(Int.self, forKey: key) { return Double(value) }
-        if let value = try? decode(String.self, forKey: key) { return Double(value) }
-        return nil
-    }
-}
-
 private struct CommentPayload: Encodable { let content: String; let isSpoiler: Bool; enum CodingKeys: String, CodingKey { case content; case isSpoiler = "is_spoiler" } }
 private struct RatingPayload: Encodable { let rating: Int }
