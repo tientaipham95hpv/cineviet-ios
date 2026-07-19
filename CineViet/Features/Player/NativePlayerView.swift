@@ -39,23 +39,74 @@ struct PictureInPicturePlayerView: UIViewRepresentable {
 
     func updateUIView(_ view: PlayerSurfaceView, context: Context) {
         if view.playerLayer.player !== player { view.playerLayer.player = player }
+        context.coordinator.attachIfNeeded(to: view.playerLayer)
         guard requestID != context.coordinator.lastRequestID else { return }
         context.coordinator.lastRequestID = requestID
-        context.coordinator.togglePictureInPicture()
+        context.coordinator.requestToggle()
+    }
+
+    static func dismantleUIView(_ uiView: PlayerSurfaceView, coordinator: Coordinator) {
+        coordinator.invalidate()
+        uiView.playerLayer.player = nil
     }
 
     final class Coordinator: NSObject, AVPictureInPictureControllerDelegate {
-        var pictureInPictureController: AVPictureInPictureController?
+        private(set) var pictureInPictureController: AVPictureInPictureController?
+        private weak var attachedLayer: AVPlayerLayer?
+        private var possibleObservation: NSKeyValueObservation?
+        private var pendingStart = false
+        private var readinessTimeout: DispatchWorkItem?
         var lastRequestID = 0
+
         func attach(to layer: AVPlayerLayer) {
             guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
-            pictureInPictureController = AVPictureInPictureController(playerLayer: layer)
-            pictureInPictureController?.canStartPictureInPictureAutomaticallyFromInline = true
-            pictureInPictureController?.delegate = self
+            attachedLayer = layer
+            let controller = AVPictureInPictureController(playerLayer: layer)
+            controller.canStartPictureInPictureAutomaticallyFromInline = true
+            controller.delegate = self
+            pictureInPictureController = controller
+            possibleObservation = controller.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] controller, _ in
+                DispatchQueue.main.async { self?.startWhenReady(controller) }
+            }
         }
-        func togglePictureInPicture() {
-            guard let controller = pictureInPictureController, controller.isPictureInPicturePossible else { return }
-            controller.isPictureInPictureActive ? controller.stopPictureInPicture() : controller.startPictureInPicture()
+
+        func attachIfNeeded(to layer: AVPlayerLayer) {
+            if attachedLayer !== layer || pictureInPictureController == nil { attach(to: layer) }
+        }
+
+        func requestToggle() {
+            guard let controller = pictureInPictureController else { return }
+            if controller.isPictureInPictureActive {
+                pendingStart = false
+                controller.stopPictureInPicture()
+                return
+            }
+            pendingStart = true
+            startWhenReady(controller)
+            readinessTimeout?.cancel()
+            let timeout = DispatchWorkItem { [weak self] in self?.pendingStart = false }
+            readinessTimeout = timeout
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
+        }
+
+        private func startWhenReady(_ controller: AVPictureInPictureController) {
+            guard pendingStart, controller.isPictureInPicturePossible, !controller.isPictureInPictureActive else { return }
+            pendingStart = false
+            readinessTimeout?.cancel()
+            controller.startPictureInPicture()
+        }
+
+        func invalidate() {
+            readinessTimeout?.cancel()
+            possibleObservation?.invalidate()
+            possibleObservation = nil
+            pictureInPictureController?.delegate = nil
+            pictureInPictureController = nil
+            attachedLayer = nil
+        }
+
+        func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+            pendingStart = false
         }
     }
 }

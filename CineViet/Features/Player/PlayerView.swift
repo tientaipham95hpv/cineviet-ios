@@ -37,8 +37,18 @@ struct PlayerView: View {
         .toolbar(.hidden, for: .navigationBar)
         .hidesFloatingNavigation()
         .sheet(item: $activePanel) { panel in selectionPanel(panel).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
-        .onAppear { OrientationManager.landscape(); viewModel.start(); revealControls() }
-        .onDisappear { hideTask?.cancel(); viewModel.stop(); OrientationManager.portrait() }
+        .onAppear {
+            NotificationCenter.default.post(name: .cineVietPlayerDidAppear, object: nil)
+            OrientationManager.landscape()
+            viewModel.start()
+            revealControls()
+        }
+        .onDisappear {
+            hideTask?.cancel()
+            viewModel.stop()
+            OrientationManager.portrait()
+            NotificationCenter.default.post(name: .cineVietPlayerDidDisappear, object: nil)
+        }
     }
 
     private var tapSurface: some View {
@@ -76,10 +86,6 @@ struct PlayerView: View {
                     .font(.caption).foregroundStyle(.white.opacity(0.68)).lineLimit(1)
             }
             Spacer()
-            Button { interact { viewModel.isAutoPlayEnabled.toggle() } } label: {
-                Label(viewModel.isAutoPlayEnabled ? "Tự phát bật" : "Tự phát tắt", systemImage: viewModel.isAutoPlayEnabled ? "rectangle.stack.fill" : "rectangle.stack")
-                    .playerPill(active: viewModel.isAutoPlayEnabled)
-            }
             Button { interact { pictureInPictureRequestID += 1 } } label: { Image(systemName: "pip.enter").playerCircle() }.accessibilityLabel("Hình trong hình")
             AirPlayButton().frame(width: 42, height: 42).background(.black.opacity(0.45), in: Circle())
         }
@@ -110,7 +116,6 @@ struct PlayerView: View {
                 featureButton("list.bullet.rectangle.fill", "Tập phim") { activePanel = .episodes }
                 featureButton("waveform", "Âm thanh", active: viewModel.selectedAudioKey != nil) { activePanel = .audio }
                 Spacer(minLength: 6)
-                Button { interact { pictureInPictureRequestID += 1 } } label: { Label("PiP", systemImage: "pip.enter").playerPill() }
             }
         }
     }
@@ -209,7 +214,12 @@ struct PlayerView: View {
     private func revealControls() { guard !controlsLocked else { return }; withAnimation(.easeInOut(duration: 0.18)) { controlsVisible = true }; scheduleHide() }
     private func hideControls() { hideTask?.cancel(); withAnimation(.easeInOut(duration: 0.18)) { controlsVisible = false } }
     private func scheduleHide() { hideTask?.cancel(); guard !controlsLocked, activePanel == nil, !isScrubbing else { return }; hideTask = Task { try? await Task.sleep(nanoseconds: 4_000_000_000); guard !Task.isCancelled else { return }; await MainActor.run { hideControls() } } }
-    private func exitPlayer() { viewModel.stop(); OrientationManager.portrait(); dismiss() }
+    private func exitPlayer() {
+        viewModel.stop()
+        OrientationManager.portrait()
+        NotificationCenter.default.post(name: .cineVietPlayerDidDisappear, object: nil)
+        dismiss()
+    }
     private func time(_ seconds: Double) -> String { let value = max(0, Int(seconds.isFinite ? seconds : 0)); return String(format: "%02d:%02d", value / 60, value % 60) }
     private func panelTitle(_ panel: PlayerPanel) -> String { switch panel { case .episodes: return "Chọn tập phim"; case .servers: return "Chọn máy chủ"; case .audio: return "Chọn âm thanh"; case .subtitles: return "Chọn phụ đề" } }
     private func hasSubtitle(_ language: String) -> Bool { viewModel.availableSubtitles.contains { $0.lang.lowercased().hasPrefix(language) } }

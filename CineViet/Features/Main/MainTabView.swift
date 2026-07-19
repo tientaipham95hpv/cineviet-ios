@@ -19,13 +19,32 @@ struct MainTabView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom, spacing: -2) {
-            if !hidesFloatingNavigation { floatingNavigation.transition(.move(edge: .bottom).combined(with: .opacity)) }
+            if !hidesFloatingNavigation {
+                floatingNavigation
+                    .allowsHitTesting(true)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .onPreferenceChange(FloatingNavigationHiddenKey.self) { hidden in
-            withAnimation(.easeOut(duration: 0.18)) { hidesFloatingNavigation = hidden }
+            setFloatingNavigationHidden(hidden)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cineVietPlayerDidAppear)) { _ in
+            setFloatingNavigationHidden(true, animated: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cineVietPlayerDidDisappear)) { _ in
+            setFloatingNavigationHidden(false)
         }
         .tint(CineVietTheme.accent)
         .preferredColorScheme(.dark)
+    }
+
+    private func setFloatingNavigationHidden(_ hidden: Bool, animated: Bool = true) {
+        guard hidesFloatingNavigation != hidden else { return }
+        if animated {
+            withAnimation(.easeOut(duration: 0.18)) { hidesFloatingNavigation = hidden }
+        } else {
+            hidesFloatingNavigation = hidden
+        }
     }
 
     private var floatingNavigation: some View {
@@ -79,6 +98,11 @@ struct FloatingNavigationHiddenKey: PreferenceKey {
 
 extension View {
     func hidesFloatingNavigation(_ hidden: Bool = true) -> some View { preference(key: FloatingNavigationHiddenKey.self, value: hidden) }
+}
+
+extension Notification.Name {
+    static let cineVietPlayerDidAppear = Notification.Name("cineviet.player.didAppear")
+    static let cineVietPlayerDidDisappear = Notification.Name("cineviet.player.didDisappear")
 }
 
 struct AccountView: View {
