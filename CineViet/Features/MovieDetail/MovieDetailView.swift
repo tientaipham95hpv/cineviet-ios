@@ -84,8 +84,8 @@ struct MovieDetailView: View {
         }.padding(.horizontal, 14) }
     }
 
-    private func action(_ icon: String, _ text: String, busy: Bool = false, perform: @escaping () -> Void) -> some View { Button(action: perform) { if busy { ProgressView().tint(.white).frame(width: 78, height: 60) } else { actionLabel(icon, text) } }.disabled(busy).accessibilityLabel(text) }
-    private func actionLabel(_ icon: String, _ text: String) -> some View { VStack(spacing: 7) { Image(systemName: icon).font(.title3).frame(height: 25); Text(text).font(.caption2).lineLimit(1) }.frame(width: 78, minHeight: 60).contentShape(Rectangle()) }
+    private func action(_ icon: String, _ text: String, busy: Bool = false, perform: @escaping () -> Void) -> some View { Button(action: perform) { if busy { ProgressView().tint(.white).frame(width: 78, minHeight: 64) } else { actionLabel(icon, text) } }.buttonStyle(DetailActionStyle()).disabled(busy).accessibilityLabel(text) }
+    private func actionLabel(_ icon: String, _ text: String) -> some View { VStack(spacing: 7) { Image(systemName: icon).font(.title3).frame(height: 25); Text(text).font(.caption2).lineLimit(1) }.frame(width: 78, minHeight: 64).contentShape(Rectangle()) }
     private func canonicalURL(_ movie: Movie) -> URL { URL(string: "https://cineviet.live/phim/\(movie.routeKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? movie.routeKey)")! }
 
     @ViewBuilder private func tabs(_ movie: Movie) -> some View {
@@ -95,7 +95,7 @@ struct MovieDetailView: View {
 
     @ViewBuilder private func section(_ movie: Movie) -> some View {
         switch selectedSection {
-        case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { HStack { Text(movie.episodeCurrent.trimmedNonEmpty ?? "Danh sách tập").font(.headline); Spacer(); if movie.episodes.count > 1 { Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").padding(10).overlay { RoundedRectangle(cornerRadius: 10).stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.subheadline.bold()).frame(maxWidth: .infinity, minHeight: 58).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(CineVietTheme.border) } }.buttonStyle(.plain).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? .45 : 1) } } }.padding(20)
+        case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { HStack { Text(movie.episodeCurrent.trimmedNonEmpty ?? "Danh sách tập").font(.headline); Spacer(); if movie.episodes.count > 1 { Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").padding(10).overlay { RoundedRectangle(cornerRadius: 10).stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.subheadline.bold()).frame(maxWidth: .infinity, minHeight: 58).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(CineVietTheme.border) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? .45 : 1) } } }.padding(20)
         case .cast: VStack(alignment: .leading, spacing: 14) { ForEach(movie.directors.filter { !$0.name.isEmpty }, id: \.name) { Text("Đạo diễn: \($0.name)").font(.subheadline) }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92))], spacing: 16) { ForEach(movie.cast.filter { !$0.name.isEmpty }.prefix(30), id: \.name) { person in VStack { Circle().fill(CineVietTheme.panel).frame(width: 64, height: 64).overlay { Text(String(person.name.prefix(1))).font(.title2.bold()).foregroundStyle(CineVietTheme.accent) }; Text(person.name).font(.caption).multilineTextAlignment(.center).lineLimit(2) } } } }.padding(20)
         case .related: ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movie.related) { MovieCardView(movie: $0) } }.padding(20) }
         }
@@ -103,7 +103,42 @@ struct MovieDetailView: View {
     private func animate(_ changes: () -> Void) { if reduceMotion { changes() } else { withAnimation(.easeInOut(duration: .22), changes) } }
 }
 
-private struct DetailCTAStyle: ButtonStyle { let primary: Bool; func makeBody(configuration: Configuration) -> some View { configuration.label.font(.headline.bold()).foregroundStyle(primary ? .black : .white).background(primary ? CineVietTheme.accent : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 15)).overlay { RoundedRectangle(cornerRadius: 15).stroke(primary ? CineVietTheme.accent : .white.opacity(.25)) }.scaleEffect(configuration.isPressed ? .97 : 1).opacity(configuration.isPressed ? .82 : 1).animation(.easeOut(duration: .12), value: configuration.isPressed) } }
+private struct DetailCTAStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    let primary: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline.bold())
+            .foregroundStyle(primary ? .black : .white)
+            .background(primary ? CineVietTheme.accent : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 15))
+            .overlay { RoundedRectangle(cornerRadius: 15).stroke(primary ? CineVietTheme.accent : .white.opacity(.25)) }
+            .scaleEffect(configuration.isPressed ? .97 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? .82 : 1) : .45)
+            .animation(.easeOut(duration: .12), value: configuration.isPressed)
+    }
+}
+
+private struct DetailActionStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 14))
+            .overlay { RoundedRectangle(cornerRadius: 14).stroke(CineVietTheme.border) }
+            .scaleEffect(configuration.isPressed ? .95 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? .72 : 1) : .5)
+            .animation(.easeOut(duration: .12), value: configuration.isPressed)
+    }
+}
+
+private struct EpisodeButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? .96 : 1)
+            .opacity(configuration.isPressed ? .72 : 1)
+            .animation(.easeOut(duration: .12), value: configuration.isPressed)
+    }
+}
 
 private struct RatingSheet: View {
     @Environment(\.dismiss) private var dismiss; @ObservedObject var viewModel: MovieDetailViewModel
