@@ -13,6 +13,9 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var selectedAudioKey: String?
     @Published var selectedSubtitleLanguage: String
     @Published private(set) var overlaySubtitle: String?
+    @Published private(set) var isPlaying = false
+    @Published var playbackPosition: Double = 0
+    @Published private(set) var playbackDuration: Double = 1
     @Published var isAutoPlayEnabled: Bool {
         didSet { defaults.set(isAutoPlayEnabled, forKey: autoPlayPreferenceKey) }
     }
@@ -27,6 +30,7 @@ final class PlayerViewModel: ObservableObject {
     private var historyObserver: Any?
     private var resumeTask: Task<Void, Never>?
     private var playbackEndObserver: NSObjectProtocol?
+    private var controlsTimeObserver: Any?
     private let defaults: UserDefaults
     private let watchHistoryService: WatchHistoryServicing
     private var lastSavedPosition: Double = 0
@@ -60,6 +64,7 @@ final class PlayerViewModel: ObservableObject {
         timeControlObservation?.invalidate()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         if let historyObserver { player.removeTimeObserver(historyObserver) }
+        if let controlsTimeObserver { player.removeTimeObserver(controlsTimeObserver) }
         subtitleTask?.cancel()
         resumeTask?.cancel()
         if let playbackEndObserver { NotificationCenter.default.removeObserver(playbackEndObserver) }
@@ -69,6 +74,7 @@ final class PlayerViewModel: ObservableObject {
         configureAudioSession()
         installPlaybackEndObserver()
         load(currentEpisode, server: currentServer)
+        installControlsObserver()
     }
 
     func stop() {
@@ -77,6 +83,7 @@ final class PlayerViewModel: ObservableObject {
         if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
         saveProgress()
         if let historyObserver { player.removeTimeObserver(historyObserver); self.historyObserver = nil }
+        if let controlsTimeObserver { player.removeTimeObserver(controlsTimeObserver); self.controlsTimeObserver = nil }
         subtitleTask?.cancel()
         resumeTask?.cancel()
         if let playbackEndObserver {
@@ -103,6 +110,28 @@ final class PlayerViewModel: ObservableObject {
     func playNextEpisode() {
         guard let nextEpisode else { return }
         play(nextEpisode, server: currentServer)
+    }
+
+    func togglePlayback() {
+        if player.timeControlStatus == .playing { player.pause() } else { player.play() }
+        isPlaying = player.timeControlStatus != .playing
+    }
+
+    func seek(to seconds: Double) {
+        player.seek(to: CMTime(seconds: max(0, seconds), preferredTimescale: 600))
+    }
+
+    func skip(_ seconds: Double) { seek(to: playbackPosition + seconds) }
+
+    private func installControlsObserver() {
+        if let controlsTimeObserver { player.removeTimeObserver(controlsTimeObserver) }
+        controlsTimeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
+            guard let self else { return }
+            self.playbackPosition = time.seconds.isFinite ? time.seconds : 0
+            let duration = self.player.currentItem?.duration.seconds ?? 0
+            self.playbackDuration = duration.isFinite && duration > 0 ? duration : 1
+            self.isPlaying = self.player.timeControlStatus == .playing
+        }
     }
 
     func selectAudio(_ source: EpisodeAudioSource?) {
