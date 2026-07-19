@@ -40,7 +40,7 @@ struct LibraryService: LibraryServicing {
     func toggleFavorite(movieID: Int, add: Bool) async throws {
         let method: HTTPMethod = add ? .post : .delete
         let request = APIRequest(method: method, path: "/user/favorites/\(movieID)", requiresAuthentication: true)
-        try await apiClient.sendVoid(request)
+        let _: JSONValue = try await apiClient.send(request)
     }
 
     func playlists() async throws -> [CinePlaylist] {
@@ -57,7 +57,7 @@ struct LibraryService: LibraryServicing {
     func add(movieID: Int, to playlistID: Int) async throws {
         let body = AddMoviePayload(movieID: movieID)
         let request = try APIRequest.json(method: .post, path: "/playlists/\(playlistID)/movies", body: body, requiresAuthentication: true)
-        try await apiClient.sendVoid(request)
+        let _: JSONValue = try await apiClient.send(request)
     }
 }
 
