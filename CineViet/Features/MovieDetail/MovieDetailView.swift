@@ -59,6 +59,9 @@ struct MovieDetailView: View {
                     .zIndex(20)
             }
         }
+        // Let the hero occupy the status-bar region. The pinned Back overlay
+        // uses GeometryReader's safe-area inset to remain below system UI.
+        .ignoresSafeArea(edges: .top)
         .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar)
         .background(InteractivePopGestureRestorer())

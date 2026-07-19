@@ -20,7 +20,10 @@ struct MainTabView: View {
             FavoritesView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(4)
         }
         .toolbar(.hidden, for: .tabBar)
-        .safeAreaInset(edge: .bottom, spacing: -2) {
+        // The floating bar is visual chrome, not layout content. Using a
+        // safeAreaInset here left its reserved region behind while a pushed
+        // detail screen hid the bar, producing a blank strip on that screen.
+        .overlay(alignment: .bottom) {
             if !hidesFloatingNavigation {
                 floatingNavigation
                     .allowsHitTesting(true)
