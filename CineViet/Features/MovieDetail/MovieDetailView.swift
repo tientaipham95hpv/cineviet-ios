@@ -99,25 +99,30 @@ struct MovieDetailView: View {
     private func actions(_ movie: Movie) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeading("Tiện ích", icon: "sparkles")
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            HStack(alignment: .top, spacing: 0) {
                 action(viewModel.isFavorite ? "heart.fill" : "heart", viewModel.isFavorite ? "Đã thích" : "Yêu thích", accent: .pink, busy: viewModel.isFavoriteBusy) { Task { await viewModel.toggleFavorite() } }
                 Menu { ForEach(viewModel.playlists) { list in Button(list.name) { Task { await viewModel.addToPlaylist(list) } } }; Divider(); Button("Tạo playlist mới…") { showingNewPlaylist = true } } label: { actionLabel("text.badge.plus", "Playlist", accent: .cyan) }
+                    .buttonStyle(DetailActionStyle()).accessibilityLabel("Playlist")
                 action("star.fill", "Đánh giá", accent: .yellow) { showingRating = true }
                 action("bubble.left.fill", "Bình luận", accent: .mint) { showingComments = true }
                 ShareLink(item: canonicalURL(movie), subject: Text(movie.title), message: Text("Xem \(movie.title) trên CineViet")) { actionLabel("square.and.arrow.up", "Chia sẻ", accent: .orange) }
+                    .buttonStyle(DetailActionStyle()).accessibilityLabel("Chia sẻ")
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 10)
+            .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         }.padding(.horizontal, 18)
     }
 
     private func action(_ icon: String, _ text: String, accent: Color, busy: Bool = false, perform: @escaping () -> Void) -> some View {
-        Button(action: perform) { busy ? AnyView(ProgressView().tint(accent).frame(maxWidth: .infinity, minHeight: 82)) : AnyView(actionLabel(icon, text, accent: accent)) }
+        Button(action: perform) { busy ? AnyView(ProgressView().tint(accent).frame(maxWidth: .infinity, minHeight: 68)) : AnyView(actionLabel(icon, text, accent: accent)) }
             .buttonStyle(DetailActionStyle()).disabled(busy).accessibilityLabel(text)
     }
     private func actionLabel(_ icon: String, _ text: String, accent: Color) -> some View {
-        VStack(spacing: 9) {
-            Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(accent).frame(width: 36, height: 36).background(accent.opacity(0.13), in: Circle())
-            Text(text).font(.system(size: 12, weight: .semibold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.75)
-        }.frame(maxWidth: .infinity, minHeight: 82).contentShape(Rectangle())
+        VStack(spacing: 7) {
+            Image(systemName: icon).font(.system(size: 20, weight: .semibold)).foregroundStyle(accent).frame(height: 28)
+            Text(text).font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(.white.opacity(0.88)).lineLimit(1).minimumScaleFactor(0.62)
+        }.frame(maxWidth: .infinity, minHeight: 68).contentShape(Rectangle())
     }
     private func sectionHeading(_ title: String, icon: String) -> some View { Label(title, systemImage: icon).font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.white) }
     private func canonicalURL(_ movie: Movie) -> URL { AppEnvironment.siteBaseURL.appendingPathComponent("movie").appendingPathComponent(movie.routeKey) }
@@ -160,11 +165,8 @@ private struct DetailActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
-            .background(LinearGradient(colors: [CineVietTheme.panel.opacity(0.98), CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(.white.opacity(configuration.isPressed ? 0.08 : 0.13), lineWidth: 0.8) }
-            .shadow(color: .black.opacity(configuration.isPressed ? 0.12 : 0.24), radius: configuration.isPressed ? 3 : 9, y: configuration.isPressed ? 1 : 4)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.5)
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.58 : 1) : 0.42)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
