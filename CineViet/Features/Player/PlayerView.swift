@@ -1,97 +1,240 @@
 import AVKit
 import SwiftUI
 
+enum PlayerPanel: String, Identifiable {
+    case episodes, servers, audio, subtitles
+    var id: String { rawValue }
+}
+
 struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: PlayerViewModel
     @State private var controlsVisible = true
-    @State private var pictureInPictureRequestID = 0
     @State private var controlsLocked = false
+    @State private var activePanel: PlayerPanel?
     @State private var hideTask: Task<Void, Never>?
-    let servers: [EpisodeServer]
+    @State private var pictureInPictureRequestID = 0
+    @State private var isScrubbing = false
+    @State private var scrubPosition: Double = 0
 
     init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing) {
         _viewModel = StateObject(wrappedValue: PlayerViewModel(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService))
-        servers = movie.episodes
     }
 
     var body: some View {
-        cinematicPlayer
-            .ignoresSafeArea()
-        .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
-        .toolbar(.hidden, for: .navigationBar).hidesFloatingNavigation()
-        .onAppear { OrientationManager.landscape(); viewModel.start(); scheduleControlsHide() }
+        ZStack {
+            Color.black
+            PictureInPicturePlayerView(player: viewModel.player, requestID: $pictureInPictureRequestID)
+            tapSurface
+            subtitleLayer
+            if controlsLocked { lockedOverlay }
+            else if controlsVisible { controlOverlay.transition(.opacity) }
+            statusLayer
+            if let count = viewModel.autoNextCountdown { autoNextCard(count) }
+        }
+        .ignoresSafeArea()
+        .foregroundStyle(.white)
+        .toolbar(.hidden, for: .navigationBar)
+        .hidesFloatingNavigation()
+        .sheet(item: $activePanel) { panel in selectionPanel(panel).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
+        .onAppear { OrientationManager.landscape(); viewModel.start(); revealControls() }
         .onDisappear { hideTask?.cancel(); viewModel.stop(); OrientationManager.portrait() }
     }
 
-    private var cinematicPlayer: some View {
-        ZStack {
-            PictureInPicturePlayerView(player: viewModel.player, requestID: $pictureInPictureRequestID)
-            Color.black.opacity(controlsVisible ? 0.34 : 0.001)
-            if controlsVisible { playerOverlay.transition(.opacity) }
-            subtitleOverlay
-            loadingAndError
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle()).onTapGesture { guard !controlsLocked else { return }; withAnimation(.easeInOut(duration: 0.18)) { controlsVisible.toggle() }; if controlsVisible { scheduleControlsHide() } }
+    private var tapSurface: some View {
+        Color.black.opacity(controlsVisible || controlsLocked ? 0.001 : 0.002)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !controlsLocked else { return }
+                controlsVisible ? hideControls() : revealControls()
+            }
     }
 
-    private var playerOverlay: some View {
-        VStack {
-            HStack {
-                Button { OrientationManager.portrait(); dismiss() } label: { controlIcon("chevron.left") }
-                Button { controlsLocked.toggle(); controlsVisible = true; controlsLocked ? hideTask?.cancel() : scheduleControlsHide() } label: { controlIcon(controlsLocked ? "lock.fill" : "lock.open") }.accessibilityLabel("Khóa điều khiển")
-                VStack(alignment: .leading, spacing: 2) { Text(viewModel.movie.title).font(.subheadline.bold()).lineLimit(1); Text("\(viewModel.currentServer.name) • \(viewModel.currentEpisode.name)").font(.caption).foregroundStyle(.white.opacity(0.72)).lineLimit(1) }
-                Spacer()
-                AirPlayButton().frame(width: 34, height: 34)
-                Button { viewModel.isAutoPlayEnabled.toggle() } label: { controlIcon(viewModel.isAutoPlayEnabled ? "play.rectangle.on.rectangle.fill" : "play.rectangle.on.rectangle") }
-            }.padding(12)
-            Spacer()
-            HStack(spacing: 42) {
-                Button { viewModel.skip(-10) } label: { Image(systemName: "gobackward.10").font(.title) }
-                Button { viewModel.togglePlayback(); scheduleControlsHide() } label: { Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 34, weight: .bold)).frame(width: 68, height: 68).background(.white.opacity(0.94), in: Circle()).foregroundStyle(.black) }
-                Button { viewModel.skip(10) } label: { Image(systemName: "goforward.10").font(.title) }
+    private var controlOverlay: some View {
+        ZStack {
+            LinearGradient(colors: [.black.opacity(0.82), .clear, .black.opacity(0.9)], startPoint: .top, endPoint: .bottom)
+            VStack(spacing: 0) {
+                topBar
+                Spacer(minLength: 8)
+                centerTransport
+                Spacer(minLength: 8)
+                bottomControls
+            }
+            .padding(.horizontal, 22).padding(.vertical, 14)
+            lockButton(locked: false)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { revealControls() }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 13) {
+            roundButton("chevron.left", label: "Quay lại") { exitPlayer() }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(viewModel.movie.title).font(.headline.weight(.bold)).lineLimit(1)
+                Text("\(viewModel.currentServer.name) • \(viewModel.currentEpisode.name) • \(viewModel.activeSourceLabel)")
+                    .font(.caption).foregroundStyle(.white.opacity(0.68)).lineLimit(1)
             }
             Spacer()
-            VStack(spacing: 6) {
-                Slider(value: $viewModel.playbackPosition, in: 0...max(viewModel.playbackDuration, 1), onEditingChanged: { editing in if !editing { viewModel.seek(to: viewModel.playbackPosition) } }).tint(CineVietTheme.accent)
-                HStack { Text(time(viewModel.playbackPosition)); Spacer(); Text("-\(time(max(0, viewModel.playbackDuration - viewModel.playbackPosition)))") }.font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.82))
-                HStack(spacing: 24) {
-                    Menu { Toggle("Tự động phát tập tiếp", isOn: $viewModel.isAutoPlayEnabled); if let next = viewModel.nextEpisode { Button("Phát \(next.name)") { viewModel.playNextEpisode() } } } label: { Label("Tự động", systemImage: "rectangle.stack.fill") }
-                    optionMenu("Server", "server.rack", servers.map(\.name), selected: viewModel.currentServer.name) { viewModel.playServer(named: $0) }
-                    subtitleMenu
-                    Menu { ForEach(viewModel.currentServer.items) { episode in Button(episode.name) { viewModel.play(episode, server: viewModel.currentServer) }.disabled(PlayerViewModel.directMediaURL(for: episode) == nil) } } label: { Label("Tập phim", systemImage: "list.bullet.rectangle") }
-                    audioMenu
-                    Button { pictureInPictureRequestID += 1 } label: { Image(systemName: "pip.enter") }
-                    AirPlayButton().frame(width: 26, height: 26)
-                }
-                .font(.caption.bold()).frame(maxWidth: .infinity)
-            }.padding(.horizontal, 14).padding(.bottom, 8)
+            Button { interact { viewModel.isAutoPlayEnabled.toggle() } } label: {
+                Label(viewModel.isAutoPlayEnabled ? "Tự phát bật" : "Tự phát tắt", systemImage: viewModel.isAutoPlayEnabled ? "rectangle.stack.fill" : "rectangle.stack")
+                    .playerPill(active: viewModel.isAutoPlayEnabled)
+            }
+            Button { interact { pictureInPictureRequestID += 1 } } label: { Image(systemName: "pip.enter").playerCircle() }.accessibilityLabel("Hình trong hình")
+            AirPlayButton().frame(width: 42, height: 42).background(.black.opacity(0.45), in: Circle())
         }
     }
 
-    private var subtitleOverlay: some View { VStack { Spacer(); if let subtitle = viewModel.overlaySubtitle { Text(subtitle).font(.headline).multilineTextAlignment(.center).padding(.horizontal, 12).padding(.vertical, 7).background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 8)).padding(.horizontal, 20).padding(.bottom, controlsVisible ? 46 : 12) } }.allowsHitTesting(false) }
-
-    @ViewBuilder private var loadingAndError: some View {
-        if viewModel.isLoading { ProgressView().controlSize(.large).tint(CineVietTheme.accent) }
-        if viewModel.isBuffering && !viewModel.isLoading { ProgressView().tint(CineVietTheme.accent) }
-        if let message = viewModel.errorMessage { VStack(spacing: 10) { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(CineVietTheme.accent); Text(message).font(.subheadline).multilineTextAlignment(.center); Button("Thử lại") { viewModel.retry() }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black) }.padding(18).background(.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 16)).padding() }
+    private var centerTransport: some View {
+        HStack(spacing: 30) {
+            transportButton("backward.end.fill", label: "Tập trước", disabled: viewModel.previousEpisode == nil) { viewModel.playPreviousEpisode() }
+            transportButton("gobackward.10", label: "Lùi 10 giây") { viewModel.skip(-10) }
+            Button { interact { viewModel.togglePlayback() } } label: {
+                Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 31, weight: .black)).frame(width: 70, height: 70)
+                    .foregroundStyle(.black).background(.white, in: Circle())
+                    .shadow(color: .black.opacity(0.35), radius: 16)
+            }
+            transportButton("goforward.10", label: "Tới 10 giây") { viewModel.skip(10) }
+            transportButton("forward.end.fill", label: "Tập sau", disabled: viewModel.nextEpisode == nil) { viewModel.playNextEpisode() }
+        }
     }
 
-    private var audioMenu: some View { Menu { if viewModel.availableAudio.isEmpty { Text("Theo nguồn M3U8") } else { ForEach(viewModel.availableAudio) { source in Button(source.label.isEmpty ? source.key : source.label) { viewModel.selectAudio(source) } } } } label: { Label("Âm thanh", systemImage: "speaker.wave.2.fill").optionChip() } }
-    private var subtitleMenu: some View { Menu { Button("Tắt") { viewModel.selectSubtitle("off") }; if viewModel.availableSubtitles.contains(where: { $0.lang.lowercased().hasPrefix("vi") }) && viewModel.availableSubtitles.contains(where: { $0.lang.lowercased().hasPrefix("en") }) { Button("Song ngữ Việt + Anh") { viewModel.selectSubtitle("dual") } }; ForEach(viewModel.availableSubtitles) { subtitle in Button(subtitle.label.isEmpty ? subtitle.lang : subtitle.label) { viewModel.selectSubtitle(subtitle.lang) } } } label: { Label("Phụ đề", systemImage: "captions.bubble.fill").optionChip() } }
-
-    private func scheduleControlsHide() {
-        hideTask?.cancel()
-        guard !controlsLocked else { return }
-        hideTask = Task { try? await Task.sleep(nanoseconds: 4_000_000_000); guard !Task.isCancelled else { return }; await MainActor.run { withAnimation { controlsVisible = false } } }
+    private var bottomControls: some View {
+        VStack(spacing: 11) {
+            timeline
+            HStack(spacing: 10) {
+                featureButton("rectangle.stack.fill", "Tự động", active: viewModel.isAutoPlayEnabled) { viewModel.isAutoPlayEnabled.toggle() }
+                featureButton("server.rack", "Server") { activePanel = .servers }
+                featureButton("captions.bubble.fill", "Phụ đề", active: viewModel.selectedSubtitleLanguage != "off") { activePanel = .subtitles }
+                featureButton("list.bullet.rectangle.fill", "Tập phim") { activePanel = .episodes }
+                featureButton("waveform", "Âm thanh", active: viewModel.selectedAudioKey != nil) { activePanel = .audio }
+                Spacer(minLength: 6)
+                Button { interact { pictureInPictureRequestID += 1 } } label: { Label("PiP", systemImage: "pip.enter").playerPill() }
+            }
+        }
     }
-    private func optionMenu(_ title: String, _ icon: String, _ values: [String], selected: String, action: @escaping (String) -> Void) -> some View { Menu { ForEach(values, id: \.self) { value in Button { action(value) } label: { if value == selected { Label(value, systemImage: "checkmark") } else { Text(value) } } } } label: { Label(title, systemImage: icon).optionChip() } }
-    private func controlIcon(_ name: String) -> some View { Image(systemName: name).font(.headline).frame(width: 38, height: 38).background(.black.opacity(0.55), in: Circle()) }
+
+    private var timeline: some View {
+        VStack(spacing: 4) {
+            Slider(value: Binding(get: { isScrubbing ? scrubPosition : viewModel.playbackPosition }, set: { scrubPosition = $0 }), in: 0...max(viewModel.playbackDuration, 1), onEditingChanged: { editing in
+                isScrubbing = editing
+                if editing { scrubPosition = viewModel.playbackPosition; hideTask?.cancel() }
+                else { viewModel.seek(to: scrubPosition); revealControls() }
+            }).tint(CineVietTheme.accent)
+            HStack {
+                Text(time(isScrubbing ? scrubPosition : viewModel.playbackPosition))
+                Spacer()
+                Text("-\(time(max(0, viewModel.playbackDuration - (isScrubbing ? scrubPosition : viewModel.playbackPosition))))")
+            }.font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.78))
+        }
+    }
+
+    private var lockedOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.001).contentShape(Rectangle())
+            lockButton(locked: true)
+        }
+    }
+
+    private func lockButton(locked: Bool) -> some View {
+        HStack {
+            Button { controlsLocked.toggle(); controlsVisible = true; controlsLocked ? hideTask?.cancel() : revealControls() } label: {
+                VStack(spacing: 5) {
+                    Image(systemName: locked ? "lock.open.fill" : "lock.fill").font(.headline)
+                    Text(locked ? "Mở khóa" : "Khóa").font(.caption2.bold())
+                }.frame(width: 58, height: 58).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 15))
+                    .overlay { RoundedRectangle(cornerRadius: 15).stroke(.white.opacity(0.14)) }
+            }.accessibilityLabel(locked ? "Mở khóa điều khiển" : "Khóa điều khiển")
+            Spacer()
+        }.padding(.leading, 17)
+    }
+
+    private var subtitleLayer: some View {
+        VStack {
+            Spacer()
+            if let subtitle = viewModel.overlaySubtitle {
+                Text(subtitle).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                    .shadow(color: .black, radius: 2).padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 28).padding(.bottom, controlsVisible && !controlsLocked ? 126 : 22)
+            }
+        }.allowsHitTesting(false)
+    }
+
+    @ViewBuilder private var statusLayer: some View {
+        if viewModel.isLoading || viewModel.isBuffering {
+            VStack(spacing: 9) { ProgressView().controlSize(.large).tint(CineVietTheme.accent); Text(viewModel.isLoading ? "Đang mở nguồn phim…" : "Đang tải dữ liệu…").font(.caption.bold()) }
+                .padding(16).background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+        }
+        if let message = viewModel.errorMessage {
+            PlayerErrorCard(message: message, retry: { viewModel.retry(); revealControls() }, sources: { activePanel = .servers }, exit: exitPlayer)
+        } else if let notice = viewModel.playbackNotice {
+            VStack { Spacer(); Text(notice).font(.subheadline.bold()).padding(.horizontal, 15).padding(.vertical, 11).background(.black.opacity(0.8), in: Capsule()).overlay { Capsule().stroke(CineVietTheme.accent.opacity(0.4)) }.padding(.bottom, controlsVisible ? 112 : 24) }
+                .transition(.move(edge: .bottom).combined(with: .opacity)).allowsHitTesting(false)
+        }
+    }
+
+    private func autoNextCard(_ count: Int) -> some View {
+        VStack { Spacer(); HStack { Spacer(); VStack(alignment: .leading, spacing: 9) {
+            Text("TỰ CHUYỂN SAU \(count) GIÂY").font(.caption.bold()).foregroundStyle(CineVietTheme.accent)
+            Text(viewModel.nextEpisode?.name ?? "Tập tiếp theo").font(.headline)
+            HStack { Button("Xem ngay") { viewModel.playNextEpisode() }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black); Button("Hủy") { viewModel.cancelAutoNext() }.buttonStyle(.bordered) }
+        }.padding(16).background(.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 16)).overlay { RoundedRectangle(cornerRadius: 16).stroke(CineVietTheme.accent.opacity(0.35)) }.frame(maxWidth: 330); Spacer().frame(width: 24) }.padding(.bottom, 24) }
+    }
+
+    @ViewBuilder private func selectionPanel(_ panel: PlayerPanel) -> some View {
+        PlayerSelectionPanel(title: panelTitle(panel), subtitle: "\(viewModel.movie.title) • \(viewModel.currentEpisode.name)") {
+            switch panel {
+            case .servers:
+                ForEach(viewModel.servers, id: \.name) { server in SelectionRow(title: server.name, detail: "\(server.items.count) tập", selected: server.name == viewModel.currentServer.name) { choose { viewModel.playServer(named: server.name) } } }
+            case .episodes:
+                ForEach(viewModel.currentServer.items) { episode in SelectionRow(title: episode.name, detail: PlayerViewModel.directMediaURL(for: episode) == nil ? "Chưa có nguồn trực tiếp" : "Sẵn sàng phát", selected: episode.id == viewModel.currentEpisode.id) { choose { viewModel.play(episode, server: viewModel.currentServer) } } }
+            case .audio:
+                SelectionRow(title: "Theo nguồn HLS chính", detail: "Âm thanh mặc định của nguồn", selected: viewModel.selectedAudioKey == nil) { choose { viewModel.selectAudio(nil) } }
+                ForEach(viewModel.availableAudio) { source in SelectionRow(title: source.label.isEmpty ? source.key : source.label, detail: source.key, selected: source.key == viewModel.selectedAudioKey) { choose { viewModel.selectAudio(source) } } }
+            case .subtitles:
+                SelectionRow(title: "Tắt phụ đề", detail: nil, selected: viewModel.selectedSubtitleLanguage == "off") { choose { viewModel.selectSubtitle("off") } }
+                if hasSubtitle("vi") && hasSubtitle("en") { SelectionRow(title: "Song ngữ Việt + Anh", detail: "Hiển thị đồng thời hai track ngoài", selected: viewModel.selectedSubtitleLanguage == "dual") { choose { viewModel.selectSubtitle("dual") } } }
+                ForEach(viewModel.availableSubtitles) { track in SelectionRow(title: track.label.isEmpty ? track.lang.uppercased() : track.label, detail: track.format.uppercased(), selected: viewModel.selectedSubtitleLanguage == track.lang) { choose { viewModel.selectSubtitle(track.lang) } } }
+            }
+        }
+    }
+
+    private func featureButton(_ icon: String, _ title: String, active: Bool = false, action: @escaping () -> Void) -> some View { Button { interact(action) } label: { Label(title, systemImage: icon).playerPill(active: active) } }
+    private func transportButton(_ icon: String, label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View { Button { interact(action) } label: { Image(systemName: icon).font(.system(size: 27, weight: .semibold)).frame(width: 52, height: 52).background(.black.opacity(0.45), in: Circle()) }.disabled(disabled).opacity(disabled ? 0.35 : 1).accessibilityLabel(label) }
+    private func roundButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View { Button(action: action) { Image(systemName: icon).playerCircle() }.accessibilityLabel(label) }
+    private func interact(_ action: () -> Void) { action(); revealControls() }
+    private func choose(_ action: () -> Void) { action(); activePanel = nil; revealControls() }
+    private func revealControls() { guard !controlsLocked else { return }; withAnimation(.easeInOut(duration: 0.18)) { controlsVisible = true }; scheduleHide() }
+    private func hideControls() { hideTask?.cancel(); withAnimation(.easeInOut(duration: 0.18)) { controlsVisible = false } }
+    private func scheduleHide() { hideTask?.cancel(); guard !controlsLocked, activePanel == nil, !isScrubbing else { return }; hideTask = Task { try? await Task.sleep(nanoseconds: 4_000_000_000); guard !Task.isCancelled else { return }; await MainActor.run { hideControls() } } }
+    private func exitPlayer() { viewModel.stop(); OrientationManager.portrait(); dismiss() }
     private func time(_ seconds: Double) -> String { let value = max(0, Int(seconds.isFinite ? seconds : 0)); return String(format: "%02d:%02d", value / 60, value % 60) }
+    private func panelTitle(_ panel: PlayerPanel) -> String { switch panel { case .episodes: return "Chọn tập phim"; case .servers: return "Chọn máy chủ"; case .audio: return "Chọn âm thanh"; case .subtitles: return "Chọn phụ đề" } }
+    private func hasSubtitle(_ language: String) -> Bool { viewModel.availableSubtitles.contains { $0.lang.lowercased().hasPrefix(language) } }
 }
 
-private extension View { func optionChip() -> some View { self.font(.caption.bold()).padding(.horizontal, 11).padding(.vertical, 9).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } } }
+private struct PlayerSelectionPanel<Content: View>: View {
+    let title: String; let subtitle: String; @ViewBuilder let content: Content
+    init(title: String, subtitle: String, @ViewBuilder content: () -> Content) { self.title = title; self.subtitle = subtitle; self.content = content() }
+    var body: some View { NavigationStack { ScrollView { LazyVStack(spacing: 9) { content }.padding(16) }.background(CineVietTheme.background).navigationTitle(title).navigationBarTitleDisplayMode(.inline).safeAreaInset(edge: .top) { Text(subtitle).font(.caption).foregroundStyle(CineVietTheme.textMuted).padding(.vertical, 5) } }.preferredColorScheme(.dark) }
+}
+
+private struct SelectionRow: View {
+    let title: String; let detail: String?; let selected: Bool; let action: () -> Void
+    var body: some View { Button(action: action) { HStack(spacing: 12) { Image(systemName: selected ? "checkmark.circle.fill" : "circle").foregroundStyle(selected ? CineVietTheme.accent : CineVietTheme.textMuted); VStack(alignment: .leading, spacing: 3) { Text(title).font(.subheadline.bold()); if let detail { Text(detail).font(.caption).foregroundStyle(CineVietTheme.textMuted) } }; Spacer() }.padding(14).background(selected ? CineVietTheme.accent.opacity(0.12) : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 13)).overlay { RoundedRectangle(cornerRadius: 13).stroke(selected ? CineVietTheme.accent.opacity(0.55) : CineVietTheme.border) } }.buttonStyle(.plain).foregroundStyle(.white) }
+}
+
+private struct PlayerErrorCard: View {
+    let message: String; let retry: () -> Void; let sources: () -> Void; let exit: () -> Void
+    var body: some View { VStack(spacing: 12) { Image(systemName: "exclamationmark.triangle.fill").font(.title).foregroundStyle(CineVietTheme.accent); Text("Không thể phát phim").font(.headline); Text(message).font(.subheadline).foregroundStyle(CineVietTheme.textMuted).multilineTextAlignment(.center); HStack { Button("Thử lại", action: retry).buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black); Button("Đổi nguồn", action: sources).buttonStyle(.bordered); Button("Thoát", action: exit).buttonStyle(.bordered) } }.padding(20).frame(maxWidth: 480).background(.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 18)).overlay { RoundedRectangle(cornerRadius: 18).stroke(CineVietTheme.border) }.padding() }
+}
+
+private extension View {
+    func playerPill(active: Bool = false) -> some View { font(.caption.bold()).padding(.horizontal, 12).padding(.vertical, 10).background(active ? CineVietTheme.accent.opacity(0.2) : .black.opacity(0.5), in: Capsule()).overlay { Capsule().stroke(active ? CineVietTheme.accent.opacity(0.7) : .white.opacity(0.16)) }.foregroundStyle(active ? CineVietTheme.accent : .white) }
+    func playerCircle() -> some View { frame(width: 42, height: 42).background(.black.opacity(0.5), in: Circle()).overlay { Circle().stroke(.white.opacity(0.14)) } }
+}
 
 private struct AirPlayButton: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView { let view = AVRoutePickerView(); view.prioritizesVideoDevices = true; view.tintColor = .white; view.activeTintColor = UIColor(CineVietTheme.accent); return view }
