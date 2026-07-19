@@ -12,6 +12,12 @@ struct PlaybackCandidate: Identifiable, Equatable {
 
 @MainActor
 final class PlayerViewModel: ObservableObject {
+    struct SubtitleStyle: Equatable {
+        var font = "Lora"
+        var size: Double = 22
+        var colorHex = "FFFFFF"
+        var bottom: Double = 8
+    }
     @Published private(set) var isLoading = true
     @Published private(set) var isBuffering = false
     @Published private(set) var errorMessage: String?
@@ -21,6 +27,7 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var selectedAudioKey: String?
     @Published var selectedSubtitleLanguage: String
     @Published private(set) var overlaySubtitle: String?
+    @Published var subtitleStyle = SubtitleStyle()
     @Published private(set) var isPlaying = false
     @Published var playbackPosition: Double = 0
     @Published private(set) var playbackDuration: Double = 1
@@ -70,6 +77,7 @@ final class PlayerViewModel: ObservableObject {
     private var audioPreferenceKey: String { "cineviet.player.audio.\(movie.id)" }
     private var subtitlePreferenceKey: String { "cineviet.player.subtitle.\(movie.id)" }
     private var autoPlayPreferenceKey: String { "cineviet.player.autoplay" }
+    private var subtitleStylePreferenceKey: String { "cineviet.player.subtitle.style.\(movie.id)" }
 
     init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing, defaults: UserDefaults = .standard) {
         self.movie = movie
@@ -83,6 +91,7 @@ final class PlayerViewModel: ObservableObject {
             ?? restoredServer.items.first(where: { Self.sameEpisode($0, episode) }) ?? episode
         selectedAudioKey = defaults.string(forKey: "cineviet.player.audio.\(movie.id)")
         selectedSubtitleLanguage = defaults.string(forKey: "cineviet.player.subtitle.\(movie.id)") ?? "vi"
+        if let data = defaults.data(forKey: "cineviet.player.subtitle.style.\(movie.id)"), let saved = try? JSONDecoder().decode(SubtitleStyleDTO.self, from: data) { subtitleStyle = saved.value }
         isAutoPlayEnabled = defaults.object(forKey: "cineviet.player.autoplay") as? Bool ?? true
         player.allowsExternalPlayback = true
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
@@ -182,6 +191,17 @@ final class PlayerViewModel: ObservableObject {
         applyEmbeddedSubtitleSelection()
         startExternalSubtitleOverlay(for: currentEpisode)
         showNotice(language == "off" ? "Đã tắt phụ đề" : "Đã chọn phụ đề")
+    }
+
+    func updateSubtitleStyle(_ style: SubtitleStyle) {
+        subtitleStyle = style
+        if let data = try? JSONEncoder().encode(SubtitleStyleDTO(value: style)) { defaults.set(data, forKey: subtitleStylePreferenceKey) }
+    }
+
+    private struct SubtitleStyleDTO: Codable {
+        let font: String; let size: Double; let colorHex: String; let bottom: Double
+        init(value: SubtitleStyle) { font = value.font; size = value.size; colorHex = value.colorHex; bottom = value.bottom }
+        var value: SubtitleStyle { SubtitleStyle(font: font, size: size, colorHex: colorHex, bottom: bottom) }
     }
 
     func dismissNotice() { playbackNotice = nil; noticeTask?.cancel() }
@@ -410,8 +430,13 @@ final class PlayerViewModel: ObservableObject {
     static func urls(for episode: EpisodeItem, audioKey: String?) -> [URL] { urlSources(for: episode, audioKey: audioKey).map(\.url) }
     private static func urlSources(for episode: EpisodeItem, audioKey: String?) -> [(url: URL, label: String)] {
         var values: [(String, String)] = []
+        // A selected audio variant is an explicit user choice.  The canonical
+        // link_m3u8 is only the default; keeping it first made bilingual
+        // servers silently continue playing the old audio stream.
+        if let audioKey, let selected = episode.audioSources.first(where: { $0.key == audioKey }) {
+            values.append((selected.url, selected.label.isEmpty ? selected.key : selected.label))
+        }
         if !episode.linkM3u8.isEmpty { values.append((episode.linkM3u8, "HLS chính")) }
-        if let audioKey, let selected = episode.audioSources.first(where: { $0.key == audioKey }) { values.append((selected.url, selected.label.isEmpty ? selected.key : selected.label)) }
         if let original = episode.audioSources.first(where: { $0.key.lowercased() == "original" }) { values.append((original.url, original.label.isEmpty ? "Âm thanh gốc" : original.label)) }
         for source in episode.audioSources { values.append((source.url, source.label.isEmpty ? source.key : source.label)) }
         var seen = Set<String>()

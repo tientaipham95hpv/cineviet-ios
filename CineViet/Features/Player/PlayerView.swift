@@ -2,7 +2,7 @@ import AVKit
 import SwiftUI
 
 enum PlayerPanel: String, Identifiable {
-    case episodes, servers, audio, subtitles
+    case episodes, servers, audio, subtitles, subtitleSettings
     var id: String { rawValue }
 }
 
@@ -159,10 +159,10 @@ struct PlayerView: View {
         VStack {
             Spacer()
             if let subtitle = viewModel.overlaySubtitle {
-                Text(subtitle).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                Text(subtitle).font(.system(size: viewModel.subtitleStyle.size, weight: .bold, design: viewModel.subtitleStyle.font == "Lora" ? .serif : .rounded)).foregroundStyle(Color.playerHex(viewModel.subtitleStyle.colorHex)).multilineTextAlignment(.center)
                     .shadow(color: .black, radius: 2).padding(.horizontal, 14).padding(.vertical, 8)
                     .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 28).padding(.bottom, controlsVisible && !controlsLocked ? 126 : 22)
+                    .padding(.horizontal, 28).padding(.bottom, (controlsVisible && !controlsLocked ? 126 : 22) + viewModel.subtitleStyle.bottom)
             }
         }.allowsHitTesting(false)
     }
@@ -202,6 +202,12 @@ struct PlayerView: View {
                 SelectionRow(title: "Tắt phụ đề", detail: nil, selected: viewModel.selectedSubtitleLanguage == "off") { choose { viewModel.selectSubtitle("off") } }
                 if hasSubtitle("vi") && hasSubtitle("en") { SelectionRow(title: "Song ngữ Việt + Anh", detail: "Hiển thị đồng thời hai track ngoài", selected: viewModel.selectedSubtitleLanguage == "dual") { choose { viewModel.selectSubtitle("dual") } } }
                 ForEach(viewModel.availableSubtitles) { track in SelectionRow(title: track.label.isEmpty ? track.lang.uppercased() : track.label, detail: track.format.uppercased(), selected: viewModel.selectedSubtitleLanguage == track.lang) { choose { viewModel.selectSubtitle(track.lang) } } }
+                if !viewModel.availableSubtitles.isEmpty {
+                    Button { activePanel = .subtitleSettings } label: { Label("Cài đặt phụ đề", systemImage: "textformat.size") }
+                        .buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black).padding(.top, 8)
+                }
+            case .subtitleSettings:
+                SubtitleSettingsPanel(style: viewModel.subtitleStyle) { viewModel.updateSubtitleStyle($0) }
             }
         }
     }
@@ -221,7 +227,7 @@ struct PlayerView: View {
         dismiss()
     }
     private func time(_ seconds: Double) -> String { let value = max(0, Int(seconds.isFinite ? seconds : 0)); return String(format: "%02d:%02d", value / 60, value % 60) }
-    private func panelTitle(_ panel: PlayerPanel) -> String { switch panel { case .episodes: return "Chọn tập phim"; case .servers: return "Chọn máy chủ"; case .audio: return "Chọn âm thanh"; case .subtitles: return "Chọn phụ đề" } }
+    private func panelTitle(_ panel: PlayerPanel) -> String { switch panel { case .episodes: return "Chọn tập phim"; case .servers: return "Chọn máy chủ"; case .audio: return "Chọn âm thanh"; case .subtitles: return "Chọn phụ đề"; case .subtitleSettings: return "Cài đặt phụ đề" } }
     private func hasSubtitle(_ language: String) -> Bool { viewModel.availableSubtitles.contains { $0.lang.lowercased().hasPrefix(language) } }
 }
 
@@ -234,6 +240,31 @@ private struct PlayerSelectionPanel<Content: View>: View {
 private struct SelectionRow: View {
     let title: String; let detail: String?; let selected: Bool; let action: () -> Void
     var body: some View { Button(action: action) { HStack(spacing: 12) { Image(systemName: selected ? "checkmark.circle.fill" : "circle").foregroundStyle(selected ? CineVietTheme.accent : CineVietTheme.textMuted); VStack(alignment: .leading, spacing: 3) { Text(title).font(.subheadline.bold()); if let detail { Text(detail).font(.caption).foregroundStyle(CineVietTheme.textMuted) } }; Spacer() }.padding(14).background(selected ? CineVietTheme.accent.opacity(0.12) : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 13)).overlay { RoundedRectangle(cornerRadius: 13).stroke(selected ? CineVietTheme.accent.opacity(0.55) : CineVietTheme.border) } }.buttonStyle(.plain).foregroundStyle(.white) }
+}
+
+private struct SubtitleSettingsPanel: View {
+    @State var style: PlayerViewModel.SubtitleStyle
+    let onChange: (PlayerViewModel.SubtitleStyle) -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Xem trước").font(.headline)
+            Text("Subtitle preview").font(.system(size: style.size, weight: .bold, design: style.font == "Lora" ? .serif : .rounded)).foregroundStyle(color).frame(maxWidth: .infinity).padding(.vertical, 18).background(.black).clipShape(RoundedRectangle(cornerRadius: 12))
+            Text("Font: \(style.font)")
+            Picker("Font", selection: Binding(get: { style.font }, set: { style.font = $0; onChange(style) })) { ForEach(["Lora", "Plus Jakarta Sans", "Arial", "Tahoma"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
+            Text("Cỡ chữ: \(Int(style.size))"); Slider(value: Binding(get: { style.size }, set: { style.size = $0; onChange(style) }), in: 10...50, step: 1).tint(CineVietTheme.accent)
+            Text("Vị trí: \(Int(style.bottom))"); Slider(value: Binding(get: { style.bottom }, set: { style.bottom = $0; onChange(style) }), in: 2...30, step: 1).tint(CineVietTheme.accent)
+            HStack { Text("Màu chữ"); ForEach(["FFFFFF", "FFFF99", "FFEB3B", "80D8FF", "FFB3C7"], id: \.self) { hex in Button { style.colorHex = hex; onChange(style) } label: { Circle().fill(Color.playerHex(hex)).frame(width: 30, height: 30).overlay { Circle().stroke(.white, lineWidth: style.colorHex == hex ? 3 : 0) } } } }
+            Spacer()
+        }.padding(20)
+    }
+    private var color: Color { Color.playerHex(style.colorHex) }
+}
+
+private extension Color {
+    static func playerHex(_ raw: String) -> Color {
+        let value = UInt64(raw, radix: 16) ?? 0xFFFFFF
+        return Color(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
+    }
 }
 
 private struct PlayerErrorCard: View {
