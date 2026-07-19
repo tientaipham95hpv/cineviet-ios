@@ -7,6 +7,7 @@ struct MainTabView: View {
     let libraryService: LibraryServicing
     let logout: () -> Void
     @State private var selectedTab = 0
+    @State private var hidesFloatingNavigation = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -17,7 +18,12 @@ struct MainTabView: View {
             FavoritesView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(4)
         }
         .toolbar(.hidden, for: .tabBar)
-        .safeAreaInset(edge: .bottom, spacing: -2) { floatingNavigation }
+        .safeAreaInset(edge: .bottom, spacing: -2) {
+            if !hidesFloatingNavigation { floatingNavigation.transition(.move(edge: .bottom).combined(with: .opacity)) }
+        }
+        .onPreferenceChange(FloatingNavigationHiddenKey.self) { hidden in
+            withAnimation(.easeOut(duration: 0.18)) { hidesFloatingNavigation = hidden }
+        }
         .tint(CineVietTheme.accent)
         .preferredColorScheme(.dark)
     }
@@ -64,6 +70,15 @@ struct MainTabView: View {
         }
         .accessibilityLabel(label)
     }
+}
+
+struct FloatingNavigationHiddenKey: PreferenceKey {
+    static var defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
+extension View {
+    func hidesFloatingNavigation(_ hidden: Bool = true) -> some View { preference(key: FloatingNavigationHiddenKey.self, value: hidden) }
 }
 
 struct AccountView: View {

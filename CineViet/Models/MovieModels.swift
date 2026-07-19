@@ -151,6 +151,16 @@ struct EpisodeItem: Codable, Equatable, Identifiable {
     var id: String { "\(name)|\(linkM3u8)|\(linkEmbed)" }
     var playUrl: String { linkM3u8.isEmpty ? linkEmbed : linkM3u8 }
     enum CodingKeys: String, CodingKey { case name, filename, linkM3u8 = "link_m3u8", linkEmbed = "link_embed", subtitles, audioSources = "audio_sources" }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Tập phim"
+        filename = try c.decodeIfPresent(String.self, forKey: .filename) ?? ""
+        linkM3u8 = try c.decodeIfPresent(String.self, forKey: .linkM3u8) ?? ""
+        linkEmbed = try c.decodeIfPresent(String.self, forKey: .linkEmbed) ?? ""
+        subtitles = try c.decodeIfPresent([EpisodeSubtitleTrack].self, forKey: .subtitles) ?? []
+        audioSources = try c.decodeIfPresent([EpisodeAudioSource].self, forKey: .audioSources) ?? []
+    }
 }
 
 struct EpisodeSubtitleTrack: Codable, Equatable, Identifiable {

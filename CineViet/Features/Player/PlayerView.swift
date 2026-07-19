@@ -134,6 +134,7 @@ struct PlayerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
+        .hidesFloatingNavigation()
         .fullScreenCover(isPresented: $isFullScreen) {
             FullScreenPlayer(player: viewModel.player, dismiss: { isFullScreen = false })
         }

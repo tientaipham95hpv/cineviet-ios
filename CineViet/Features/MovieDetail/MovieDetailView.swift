@@ -14,17 +14,20 @@ struct MovieDetailView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                switch viewModel.state {
-                case .loading: ProgressView("Đang tải thông tin phim…").tint(CineVietTheme.accent).frame(maxWidth: .infinity, minHeight: 600)
-                case .failed(let message): ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message).frame(minHeight: 520).onTapGesture { Task { await viewModel.retry() } }
-                case .loaded: detailContent(proxy)
-                }
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    switch viewModel.state {
+                    case .loading: ProgressView("Đang tải thông tin phim…").tint(CineVietTheme.accent).frame(width: geometry.size.width, minHeight: 600)
+                    case .failed(let message): ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message).frame(width: geometry.size.width, minHeight: 520).onTapGesture { Task { await viewModel.retry() } }
+                    case .loaded: detailContent(proxy).frame(width: geometry.size.width)
+                    }
+                }.frame(width: geometry.size.width)
             }
         }
         .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar)
+        .hidesFloatingNavigation()
         .task { await viewModel.load() }
         .alert("Tạo playlist", isPresented: $showingNewPlaylist) {
             TextField("Tên playlist", text: $newPlaylistName)
@@ -55,7 +58,7 @@ struct MovieDetailView: View {
         ZStack(alignment: .topLeading) {
             AsyncImage(url: movie.backdropURL) { phase in
                 if case .success(let image) = phase { image.resizable().scaledToFill() } else { CineVietTheme.panel }
-            }.frame(height: 315).clipped()
+            }.frame(maxWidth: .infinity).frame(height: 315).clipped()
             LinearGradient(colors: [.black.opacity(0.08), .clear, CineVietTheme.background.opacity(0.38)], startPoint: .top, endPoint: .bottom)
             Button { dismiss() } label: { Image(systemName: "xmark").font(.title3.bold()).frame(width: 48, height: 48).background(.black.opacity(0.58), in: Circle()).overlay { Circle().stroke(.white.opacity(0.3)) } }
                 .padding(.leading, 18).padding(.top, 14)
@@ -89,11 +92,11 @@ struct MovieDetailView: View {
     @ViewBuilder private func description(_ movie: Movie) -> some View { if !movie.description.isEmpty { Text(movie.description).font(.body).lineSpacing(5).foregroundStyle(CineVietTheme.textMuted).lineLimit(4).padding(.horizontal, 20) } }
 
     private var socialActions: some View {
-        HStack { actionButton(viewModel.isFavorite ? "heart.fill" : "heart", viewModel.isFavorite ? "Đã thích" : "Yêu thích") { Task { await viewModel.toggleFavorite() } }; Menu { ForEach(viewModel.playlists) { item in Button(item.name) { Task { await viewModel.addToPlaylist(item) } } }; Divider(); Button("Tạo playlist mới…") { showingNewPlaylist = true } } label: { actionLabel("plus", "Thêm vào") }; actionButton("face.smiling", "Đánh giá") { }; actionButton("bubble.left.and.bubble.right.fill", "Bình luận") { }; actionButton("paperplane.fill", "Chia sẻ") { } }.padding(.horizontal, 8)
+        ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 4) { actionButton(viewModel.isFavorite ? "heart.fill" : "heart", viewModel.isFavorite ? "Đã thích" : "Yêu thích") { Task { await viewModel.toggleFavorite() } }; Menu { ForEach(viewModel.playlists) { item in Button(item.name) { Task { await viewModel.addToPlaylist(item) } } }; Divider(); Button("Tạo playlist mới…") { showingNewPlaylist = true } } label: { actionLabel("plus", "Thêm vào") }; actionButton("face.smiling", "Đánh giá") { }; actionButton("bubble.left.and.bubble.right.fill", "Bình luận") { }; actionButton("paperplane.fill", "Chia sẻ") { } }.padding(.horizontal, 12) }
     }
 
-    private func actionButton(_ icon: String, _ title: String, action: @escaping () -> Void) -> some View { Button(action: action) { actionLabel(icon, title) }.frame(maxWidth: .infinity) }
-    private func actionLabel(_ icon: String, _ title: String) -> some View { VStack(spacing: 8) { Image(systemName: icon).font(.title2).frame(height: 28); Text(title).font(.caption2).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }.foregroundStyle(.white).frame(maxWidth: .infinity) }
+    private func actionButton(_ icon: String, _ title: String, action: @escaping () -> Void) -> some View { Button(action: action) { actionLabel(icon, title) } }
+    private func actionLabel(_ icon: String, _ title: String) -> some View { VStack(spacing: 8) { Image(systemName: icon).font(.title2).frame(height: 28); Text(title).font(.caption2).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }.foregroundStyle(.white).frame(width: 72) }
 
     private func contentTabs(_ proxy: ScrollViewProxy) -> some View {
         HStack(spacing: 0) { sectionTab("Tập phim", 0); sectionTab("Diễn viên", 1); sectionTab("Đề xuất", 2) }.overlay(alignment: .bottom) { Rectangle().fill(CineVietTheme.border).frame(height: 1) }.padding(.top, 4)
