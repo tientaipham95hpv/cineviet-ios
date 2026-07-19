@@ -69,6 +69,8 @@ struct HomeView: View {
         case .loaded(let data):
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 30) {
+                    homeHeader
+                    categoryChips
                     if !data.featured.isEmpty {
                         featuredCarousel(Array(data.featured.prefix(7)))
                     }
@@ -80,6 +82,26 @@ struct HomeView: View {
             }
             .refreshable { await viewModel.retry() }
         }
+    }
+
+    private var homeHeader: some View {
+        HStack(spacing: 12) {
+            ZStack { RoundedRectangle(cornerRadius: 13).fill(CineVietTheme.accent); Text("CV").font(.system(size: 17, weight: .black)).foregroundStyle(.black) }.frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 1) { Text("CINEVIET").font(.headline.bold()).tracking(1.4); Text("Kho phim của người Việt").font(.caption).foregroundStyle(CineVietTheme.textMuted) }
+            Spacer()
+            Image(systemName: "bell").font(.headline).frame(width: 42, height: 42).cineGlass(cornerRadius: 15)
+        }.padding(.horizontal, 18).padding(.top, 8)
+    }
+
+    private var categoryChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 9) {
+            categoryChip("Tất cả", selected: true); categoryChip("Phim bộ"); categoryChip("Phim lẻ"); categoryChip("Chiếu rạp"); categoryChip("Hoạt hình"); categoryChip("Song ngữ")
+        }.padding(.horizontal, 18) }
+    }
+
+    private func categoryChip(_ title: String, selected: Bool = false) -> some View {
+        Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(selected ? .black : CineVietTheme.textMuted).padding(.horizontal, 15).padding(.vertical, 9)
+            .background(selected ? CineVietTheme.accent : CineVietTheme.panel, in: Capsule()).overlay { if !selected { Capsule().stroke(CineVietTheme.border) } }
     }
 
     private func featuredCarousel(_ movies: [Movie]) -> some View {
