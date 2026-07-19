@@ -24,7 +24,7 @@ struct PlayerView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
-                            .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 7))
+                            .cineGlass(cornerRadius: 10)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 18)
                     }
@@ -34,7 +34,7 @@ struct PlayerView: View {
                     ProgressView("Đang tải nguồn phát…")
                         .tint(.orange)
                         .padding()
-                        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+                        .cineGlass(cornerRadius: 14, tint: .orange)
                 }
                 if let message = viewModel.errorMessage {
                     VStack(spacing: 12) {
@@ -46,7 +46,7 @@ struct PlayerView: View {
                             .buttonStyle(.borderedProminent)
                     }
                     .padding(24)
-                    .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
+                    .cineGlass(cornerRadius: 18, tint: .orange)
                     .padding()
                 }
             }
@@ -114,8 +114,9 @@ struct PlayerView: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .listRowBackground(Color.white.opacity(0.055))
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(CineVietTheme.background.ignoresSafeArea())
         .foregroundStyle(.white)
         .navigationTitle(viewModel.currentEpisode.name)
         .navigationBarTitleDisplayMode(.inline)

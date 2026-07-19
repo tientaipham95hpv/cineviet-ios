@@ -18,7 +18,13 @@ struct MovieCardView: View {
                 }
             }
             .frame(width: 138, height: 202)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                if !movie.quality.isEmpty {
+                    Text(movie.quality).font(.caption2.bold()).padding(.horizontal, 7).padding(.vertical, 4)
+                        .cineGlass(cornerRadius: 10, tint: .orange).padding(7)
+                }
+            }
 
             Text(movie.title)
                 .font(.subheadline.weight(.semibold))
@@ -34,6 +40,8 @@ struct MovieCardView: View {
                     .frame(width: 138, alignment: .leading)
             }
         }
+        .padding(8)
+        .cineGlass(cornerRadius: 20)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(movie.title)

@@ -20,7 +20,16 @@ struct MainTabView: View {
             AccountView(user: user, logout: logout)
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
-        .tint(.orange)
+        .tint(CineVietTheme.accent)
+        .preferredColorScheme(.dark)
+        .onAppear {
+            let appearance = UITabBarAppearance()
+            appearance.configureWithTransparentBackground()
+            appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+            appearance.backgroundColor = UIColor.black.withAlphaComponent(0.24)
+            UITabBar.appearance().standardAppearance = appearance
+            UITabBar.appearance().scrollEdgeAppearance = appearance
+        }
     }
 }
 
@@ -39,6 +48,8 @@ struct AccountView: View {
                 }
                 Button("Đăng xuất", role: .destructive, action: logout)
             }
+            .scrollContentBackground(.hidden)
+            .background(CineVietTheme.background.ignoresSafeArea())
             .navigationTitle("Tài khoản")
         }
     }

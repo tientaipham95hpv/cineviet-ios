@@ -16,7 +16,7 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             content
-                .background(Color.black.ignoresSafeArea())
+                .background(homeBackground)
                 .navigationTitle("CineViet")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -95,7 +95,7 @@ struct HomeView: View {
             .clipped()
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.92)],
+                colors: [.clear, CineVietTheme.background.opacity(0.97)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -109,16 +109,18 @@ struct HomeView: View {
                 }
             }
             .padding(20)
+            .cineGlass(cornerRadius: 18, tint: .orange)
+            .padding(16)
         }
         .frame(height: 310)
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding(.horizontal, 12)
         .contentShape(Rectangle())
     }
 
     private func movieSection(_ section: HomeSection) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(section.title)
-                .font(.title2.bold())
-                .padding(.horizontal, 16)
+            GlassSectionHeader(title: section.title)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(section.movies) { movie in
@@ -128,6 +130,14 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 16)
             }
+        }
+    }
+
+    private var homeBackground: some View {
+        ZStack {
+            CineVietTheme.background.ignoresSafeArea()
+            RadialGradient(colors: [.orange.opacity(0.16), .clear], center: .topTrailing, startRadius: 10, endRadius: 430).ignoresSafeArea()
+            RadialGradient(colors: [.purple.opacity(0.12), .clear], center: .bottomLeading, startRadius: 10, endRadius: 500).ignoresSafeArea()
         }
     }
 }
