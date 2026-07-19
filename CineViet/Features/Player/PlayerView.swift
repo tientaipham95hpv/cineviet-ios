@@ -14,18 +14,12 @@ struct PlayerView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 0) {
-                cinematicPlayer
-                playerInformation
-                playbackOptions
-                episodeBrowser
-            }
-        }
+        cinematicPlayer
+            .ignoresSafeArea()
         .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar).hidesFloatingNavigation()
-        .onAppear { viewModel.start() }.onDisappear { viewModel.stop() }
-        .fullScreenCover(isPresented: $isFullScreen) { FullScreenPlayer(viewModel: viewModel, dismiss: { isFullScreen = false }) }
+        .onAppear { OrientationManager.landscape(); viewModel.start() }
+        .onDisappear { viewModel.stop(); OrientationManager.portrait() }
     }
 
     private var cinematicPlayer: some View {
@@ -36,18 +30,19 @@ struct PlayerView: View {
             subtitleOverlay
             loadingAndError
         }
-        .frame(maxWidth: .infinity).aspectRatio(16 / 9, contentMode: .fit)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle()).onTapGesture { withAnimation(.easeInOut(duration: 0.18)) { controlsVisible.toggle() } }
     }
 
     private var playerOverlay: some View {
         VStack {
             HStack {
-                Button { dismiss() } label: { controlIcon("chevron.left") }
+                Button { OrientationManager.portrait(); dismiss() } label: { controlIcon("chevron.left") }
+                Image(systemName: "lock.open").font(.headline).frame(width: 34)
                 VStack(alignment: .leading, spacing: 2) { Text(viewModel.movie.title).font(.subheadline.bold()).lineLimit(1); Text("\(viewModel.currentServer.name) • \(viewModel.currentEpisode.name)").font(.caption).foregroundStyle(.white.opacity(0.72)).lineLimit(1) }
                 Spacer()
                 AirPlayButton().frame(width: 34, height: 34)
-                Button { isFullScreen = true } label: { controlIcon("arrow.up.left.and.arrow.down.right") }
+                Button { viewModel.isAutoPlayEnabled.toggle() } label: { controlIcon(viewModel.isAutoPlayEnabled ? "play.rectangle.on.rectangle.fill" : "play.rectangle.on.rectangle") }
             }.padding(12)
             Spacer()
             HStack(spacing: 42) {
@@ -56,9 +51,19 @@ struct PlayerView: View {
                 Button { viewModel.skip(10) } label: { Image(systemName: "goforward.10").font(.title) }
             }
             Spacer()
-            VStack(spacing: 3) {
+            VStack(spacing: 6) {
                 Slider(value: $viewModel.playbackPosition, in: 0...max(viewModel.playbackDuration, 1), onEditingChanged: { editing in if !editing { viewModel.seek(to: viewModel.playbackPosition) } }).tint(CineVietTheme.accent)
                 HStack { Text(time(viewModel.playbackPosition)); Spacer(); Text("-\(time(max(0, viewModel.playbackDuration - viewModel.playbackPosition)))") }.font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.82))
+                HStack(spacing: 24) {
+                    Menu { Toggle("Tự động phát tập tiếp", isOn: $viewModel.isAutoPlayEnabled); if let next = viewModel.nextEpisode { Button("Phát \(next.name)") { viewModel.playNextEpisode() } } } label: { Label("Tự động", systemImage: "rectangle.stack.fill") }
+                    optionMenu("Server", "mic.fill", servers.map(\.name), selected: viewModel.currentServer.name) { name in if let server = servers.first(where: { $0.name == name }), let episode = server.items.first(where: { PlayerViewModel.directMediaURL(for: $0) != nil }) { viewModel.play(episode, server: server) } }
+                    subtitleMenu
+                    Menu { ForEach(viewModel.currentServer.items) { episode in Button(episode.name) { viewModel.play(episode, server: viewModel.currentServer) }.disabled(PlayerViewModel.directMediaURL(for: episode) == nil) } } label: { Label("Tập phim", systemImage: "list.bullet.rectangle") }
+                    audioMenu
+                    AirPlayButton().frame(width: 26, height: 26)
+                    Button { OrientationManager.portrait(); dismiss() } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }
+                }
+                .font(.caption.bold()).frame(maxWidth: .infinity)
             }.padding(.horizontal, 14).padding(.bottom, 8)
         }
     }
