@@ -62,6 +62,11 @@ struct AccountView: View {
                     NavigationLink("Chỉnh sửa tên hiển thị") { EditProfileView(user: user, model: model, updateUser: updateUser) }.frame(minHeight: 44)
                     NavigationLink("Đổi mật khẩu") { ChangePasswordView(model: model) }.frame(minHeight: 44)
                 }
+                Section("Ứng dụng") {
+                    LabeledContent("Phiên bản", value: appBuildLabel)
+                        .textSelection(.enabled)
+                        .accessibilityHint("Dùng mã này để xác minh bản ứng dụng đang cài")
+                }
                 Section {
                     Button("Đăng xuất", role: .destructive) { confirmsLogout = true }.frame(maxWidth: .infinity, minHeight: 44)
                 }
@@ -75,6 +80,12 @@ struct AccountView: View {
         }
     }
 
+    private var appBuildLabel: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "dev"
+        return "\(version) (\(build))"
+    }
     private var membershipLabel: String {
         let role = (user.role ?? user.userRole ?? user.type)?.lowercased()
         if role == "admin" || role == "administrator" { return "Administrator" }
