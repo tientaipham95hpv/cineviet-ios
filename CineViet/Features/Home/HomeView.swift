@@ -3,9 +3,11 @@ import SwiftUI
 struct HomeView: View {
     @StateObject private var viewModel: HomeViewModel
     let logout: () -> Void
+    let watchHistoryService: WatchHistoryServicing
 
-    init(movieService: MovieServicing, logout: @escaping () -> Void) {
+    init(movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, logout: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(movieService: movieService))
+        self.watchHistoryService = watchHistoryService
         self.logout = logout
     }
 
@@ -31,7 +33,7 @@ struct HomeView: View {
                     )
                 ) {
                     if let movie = viewModel.selectedMovie {
-                        MovieDetailView(movie: movie, movieService: viewModel.movieService)
+                        MovieDetailView(movie: movie, movieService: viewModel.movieService, watchHistoryService: watchHistoryService)
                     }
                 }
         }

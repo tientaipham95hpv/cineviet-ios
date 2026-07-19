@@ -18,15 +18,20 @@ final class PlayerViewModel: ObservableObject {
     private var itemObservation: NSKeyValueObservation?
     private var timeObserver: Any?
     private var subtitleTask: Task<Void, Never>?
+    private var historyObserver: Any?
+    private var resumeTask: Task<Void, Never>?
     private let defaults: UserDefaults
+    private let watchHistoryService: WatchHistoryServicing
+    private var lastSavedPosition: Double = 0
     var availableAudio: [EpisodeAudioSource] { currentEpisode.audioSources }
     var availableSubtitles: [EpisodeSubtitleTrack] { currentEpisode.subtitles }
 
-    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, defaults: UserDefaults = .standard) {
+    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing, defaults: UserDefaults = .standard) {
         self.movie = movie
         currentServer = server
         currentEpisode = episode
         self.defaults = defaults
+        self.watchHistoryService = watchHistoryService
         selectedAudioKey = defaults.string(forKey: "cineviet.player.audio.\(movie.id)")
         selectedSubtitleLanguage = defaults.string(forKey: "cineviet.player.subtitle.\(movie.id)") ?? "vi"
         player.allowsExternalPlayback = true
@@ -36,7 +41,9 @@ final class PlayerViewModel: ObservableObject {
     deinit {
         itemObservation?.invalidate()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
+        if let historyObserver { player.removeTimeObserver(historyObserver) }
         subtitleTask?.cancel()
+        resumeTask?.cancel()
     }
 
     func start() {
@@ -48,12 +55,16 @@ final class PlayerViewModel: ObservableObject {
         player.pause()
         itemObservation?.invalidate()
         if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
+        saveProgress()
+        if let historyObserver { player.removeTimeObserver(historyObserver); self.historyObserver = nil }
         subtitleTask?.cancel()
+        resumeTask?.cancel()
     }
 
     func play(_ episode: EpisodeItem, server: EpisodeServer) {
         currentEpisode = episode
         currentServer = server
+        lastSavedPosition = 0
         load(episode, server: server)
     }
 
@@ -97,7 +108,7 @@ final class PlayerViewModel: ObservableObject {
                     self.errorMessage = nil
                     self.applyEmbeddedSubtitleSelection()
                     self.startExternalSubtitleOverlay(for: episode)
-                    self.player.play()
+                    self.resumePlaybackIfNeeded(for: episode)
                 case .failed:
                     self.isLoading = false
                     self.errorMessage = item.error?.localizedDescription ?? "Không thể mở nguồn phát."
@@ -110,6 +121,45 @@ final class PlayerViewModel: ObservableObject {
             }
         }
         player.replaceCurrentItem(with: item)
+    }
+
+    private func resumePlaybackIfNeeded(for episode: EpisodeItem) {
+        resumeTask?.cancel()
+        resumeTask = Task { [weak self] in
+            guard let self else { return }
+            let resume = await self.watchHistoryService.resume(movieId: self.movie.id)
+            guard !Task.isCancelled else { return }
+            if let resume,
+               (resume.episodeName == episode.name || resume.streamURL == Self.directMediaURL(for: episode, audioKey: self.selectedAudioKey)?.absoluteString),
+               resume.positionSeconds > 3 {
+                await self.player.seek(to: CMTime(seconds: resume.positionSeconds, preferredTimescale: 600))
+                self.lastSavedPosition = resume.positionSeconds
+            }
+            self.installHistoryObserver()
+            self.player.play()
+        }
+    }
+
+    private func installHistoryObserver() {
+        if let historyObserver { player.removeTimeObserver(historyObserver) }
+        historyObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 10, preferredTimescale: 1), queue: .main
+        ) { [weak self] _ in self?.saveProgress() }
+    }
+
+    private func saveProgress() {
+        guard let item = player.currentItem else { return }
+        let position = player.currentTime().seconds
+        let duration = item.duration.seconds
+        guard position.isFinite, duration.isFinite, position >= 3,
+              abs(position - lastSavedPosition) >= 5 else { return }
+        lastSavedPosition = position
+        let serverIndex = movie.episodes.firstIndex(where: { $0.name == currentServer.name }) ?? 0
+        let service = watchHistoryService
+        let movie = movie
+        let server = currentServer
+        let episode = currentEpisode
+        Task { await service.save(movie: movie, server: server, serverIndex: serverIndex, episode: episode, position: position, duration: duration) }
     }
 
     private func startExternalSubtitleOverlay(for episode: EpisodeItem) {

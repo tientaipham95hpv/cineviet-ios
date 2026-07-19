@@ -2,9 +2,11 @@ import SwiftUI
 
 struct MovieDetailView: View {
     @StateObject private var viewModel: MovieDetailViewModel
+    let watchHistoryService: WatchHistoryServicing
 
-    init(movie: Movie, movieService: MovieServicing) {
+    init(movie: Movie, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing) {
         _viewModel = StateObject(wrappedValue: MovieDetailViewModel(movie: movie, movieService: movieService))
+        self.watchHistoryService = watchHistoryService
     }
 
     var body: some View {
@@ -93,7 +95,7 @@ struct MovieDetailView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 8)], spacing: 8) {
                     ForEach(server.items) { episode in
                         NavigationLink {
-                            PlayerView(movie: movie, server: server, episode: episode)
+                            PlayerView(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService)
                         } label: {
                             HStack {
                                 Text(episode.name)

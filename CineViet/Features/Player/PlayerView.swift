@@ -5,8 +5,8 @@ struct PlayerView: View {
     @StateObject private var viewModel: PlayerViewModel
     let servers: [EpisodeServer]
 
-    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem) {
-        _viewModel = StateObject(wrappedValue: PlayerViewModel(movie: movie, server: server, episode: episode))
+    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing) {
+        _viewModel = StateObject(wrappedValue: PlayerViewModel(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService))
         servers = movie.episodes
     }
 

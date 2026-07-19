@@ -26,7 +26,11 @@ struct SessionRootView: View {
             case .signedOut:
                 LoginView(viewModel: viewModel)
             case .signedIn:
-                HomeView(movieService: container.movieService, logout: viewModel.logout)
+                HomeView(
+                    movieService: container.movieService,
+                    watchHistoryService: container.watchHistoryService,
+                    logout: viewModel.logout
+                )
             }
         }
         .task { await viewModel.restoreSession() }
