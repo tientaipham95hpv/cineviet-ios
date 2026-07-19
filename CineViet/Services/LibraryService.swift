@@ -26,6 +26,10 @@ protocol LibraryServicing {
     func playlists() async throws -> [CinePlaylist]
     func createPlaylist(name: String, description: String, isPublic: Bool) async throws -> CinePlaylist
     func add(movieID: Int, to playlistID: Int) async throws
+    func playlistDetail(_ playlist: CinePlaylist) async throws -> PlaylistDetail
+    func updatePlaylist(_ playlistID: Int, name: String? = nil, description: String? = nil, isPublic: Bool? = nil) async throws -> CinePlaylist
+    func remove(movieID: Int, from playlistID: Int) async throws
+    func deletePlaylist(_ playlistID: Int) async throws
 }
 
 struct LibraryService: LibraryServicing {
@@ -66,6 +70,34 @@ struct LibraryService: LibraryServicing {
         let request = try APIRequest.json(method: .post, path: "/playlists/\(playlistID)/movies", body: body, requiresAuthentication: true)
         let _: JSONValue = try await apiClient.send(request)
     }
+
+    func playlistDetail(_ playlist: CinePlaylist) async throws -> PlaylistDetail {
+        let request = APIRequest(method: .get, path: "/playlists/\(playlist.id)/movies", requiresAuthentication: true)
+        let response: PlaylistDetailResponse = try await apiClient.send(request)
+        return PlaylistDetail(playlist: response.playlist, movies: response.movies)
+    }
+
+    func updatePlaylist(_ playlistID: Int, name: String? = nil, description: String? = nil, isPublic: Bool? = nil) async throws -> CinePlaylist {
+        let body = UpdatePlaylistPayload(name: name, description: description, isPublic: isPublic)
+        let request = try APIRequest.json(method: .patch, path: "/playlists/\(playlistID)", body: body, requiresAuthentication: true)
+        return try await apiClient.send(request)
+    }
+
+    func remove(movieID: Int, from playlistID: Int) async throws {
+        let request = APIRequest(method: .delete, path: "/playlists/\(playlistID)/movies/\(movieID)", requiresAuthentication: true)
+        let _: JSONValue = try await apiClient.send(request)
+    }
+
+    func deletePlaylist(_ playlistID: Int) async throws {
+        let request = APIRequest(method: .delete, path: "/playlists/\(playlistID)", requiresAuthentication: true)
+        let _: JSONValue = try await apiClient.send(request)
+    }
+}
+
+private struct PlaylistDetailResponse: Decodable { let playlist: CinePlaylist; let movies: [Movie] }
+private struct UpdatePlaylistPayload: Encodable {
+    let name: String?; let description: String?; let isPublic: Bool?
+    enum CodingKeys: String, CodingKey { case name, description, isPublic = "is_public" }
 }
 
 private struct FavoriteMoviesEnvelope: Decodable {

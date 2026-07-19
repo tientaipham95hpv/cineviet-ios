@@ -36,6 +36,9 @@ struct PlayerView: View {
                         .padding()
                         .cineGlass(cornerRadius: 14, tint: .orange)
                 }
+                if viewModel.isBuffering && !viewModel.isLoading {
+                    ProgressView().tint(.orange).padding(16).cineGlass(cornerRadius: 18, tint: .orange)
+                }
                 if let message = viewModel.errorMessage {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -58,6 +61,10 @@ struct PlayerView: View {
                     Text(viewModel.movie.title).font(.headline)
                     Text("\(viewModel.currentServer.name) • \(viewModel.currentEpisode.name)")
                         .foregroundStyle(.secondary)
+                    if let seconds = viewModel.resumePosition {
+                        Label("Đã tiếp tục từ \(Int(seconds / 60)):\(String(format: "%02d", Int(seconds) % 60))", systemImage: "clock.arrow.circlepath")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
                     Toggle("Tự động phát tập tiếp theo", isOn: $viewModel.isAutoPlayEnabled)
                     if let nextEpisode = viewModel.nextEpisode {
                         Button {

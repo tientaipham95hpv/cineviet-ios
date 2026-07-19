@@ -5,6 +5,8 @@ import Foundation
 @MainActor
 final class PlayerViewModel: ObservableObject {
     @Published private(set) var isLoading = true
+    @Published private(set) var isBuffering = false
+    @Published private(set) var resumePosition: Double?
     @Published private(set) var errorMessage: String?
     @Published private(set) var currentEpisode: EpisodeItem
     @Published private(set) var currentServer: EpisodeServer
@@ -19,6 +21,7 @@ final class PlayerViewModel: ObservableObject {
     let player = AVPlayer()
 
     private var itemObservation: NSKeyValueObservation?
+    private var timeControlObservation: NSKeyValueObservation?
     private var timeObserver: Any?
     private var subtitleTask: Task<Void, Never>?
     private var historyObserver: Any?
@@ -47,10 +50,14 @@ final class PlayerViewModel: ObservableObject {
         isAutoPlayEnabled = defaults.object(forKey: "cineviet.player.autoplay") as? Bool ?? true
         player.allowsExternalPlayback = true
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
+        timeControlObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
+            Task { @MainActor in self?.isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate }
+        }
     }
 
     deinit {
         itemObservation?.invalidate()
+        timeControlObservation?.invalidate()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         if let historyObserver { player.removeTimeObserver(historyObserver) }
         subtitleTask?.cancel()
@@ -182,6 +189,7 @@ final class PlayerViewModel: ObservableObject {
                resume.positionSeconds > 3 {
                 await self.player.seek(to: CMTime(seconds: resume.positionSeconds, preferredTimescale: 600))
                 self.lastSavedPosition = resume.positionSeconds
+                self.resumePosition = resume.positionSeconds
             }
             self.installHistoryObserver()
             self.player.play()

@@ -14,155 +14,88 @@ struct MovieDetailView: View {
     var body: some View {
         ScrollView {
             switch viewModel.state {
-            case .loading:
-                ProgressView("Đang tải thông tin phim…")
-                    .tint(.orange)
-                    .frame(maxWidth: .infinity, minHeight: 400)
-            case .failed(let message):
-                VStack(spacing: 14) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.orange)
-                    Text("Không tải được thông tin phim")
-                        .font(.headline)
-                    Text(message)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("Thử lại") { Task { await viewModel.retry() } }
-                        .buttonStyle(.borderedProminent)
-                }
-                .frame(maxWidth: .infinity, minHeight: 400)
-                .padding()
-            case .loaded:
-                detailContent
+            case .loading: ProgressView("Đang tải thông tin phim…").tint(.orange).frame(maxWidth: .infinity, minHeight: 500)
+            case .failed(let message): ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message).frame(minHeight: 450).onTapGesture { Task { await viewModel.retry() } }
+            case .loaded: detailContent
             }
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(detailBackground)
         .foregroundStyle(.white)
         .navigationTitle(viewModel.displayedMovie.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
         .alert("Tạo playlist", isPresented: $showingNewPlaylist) {
             TextField("Tên playlist", text: $newPlaylistName)
-            Button("Tạo và thêm phim") {
-                let name = newPlaylistName
-                newPlaylistName = ""
-                Task { await viewModel.createPlaylist(name: name) }
-            }.disabled(newPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Tạo và thêm phim") { let name = newPlaylistName; newPlaylistName = ""; Task { await viewModel.createPlaylist(name: name) } }
+                .disabled(newPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Huỷ", role: .cancel) { }
         }
     }
 
     private var detailContent: some View {
         let movie = viewModel.displayedMovie
-        return VStack(alignment: .leading, spacing: 20) {
-            ZStack(alignment: .bottomLeading) {
-                AsyncImage(url: movie.backdropURL) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else { Color.white.opacity(0.08) }
-                }
-                .frame(height: 280)
-                .clipped()
-                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                Text(movie.title)
-                    .font(.largeTitle.bold())
-                    .lineLimit(3)
-                    .padding(20)
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                if !movie.titleEn.isEmpty { Text(movie.titleEn).foregroundStyle(.secondary) }
-                if !movie.metadataLine.isEmpty { Text(movie.metadataLine).foregroundStyle(.orange) }
-                if !movie.genres.isEmpty { Text(movie.genres.joined(separator: " • ")).foregroundStyle(.secondary) }
-                if !movie.description.isEmpty { Text(movie.description).lineSpacing(4) }
-                HStack {
-                    Button { Task { await viewModel.toggleFavorite() } } label: {
-                        Label(viewModel.isFavorite ? "Đã yêu thích" : "Yêu thích", systemImage: viewModel.isFavorite ? "heart.fill" : "heart")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
-                    Menu {
-                        ForEach(viewModel.playlists) { playlist in
-                            Button(playlist.name) { Task { await viewModel.addToPlaylist(playlist) } }
-                        }
-                        Divider()
-                        Button("Tạo playlist mới…") { showingNewPlaylist = true }
-                    } label: { Label("Playlist", systemImage: "text.badge.plus") }
-                    .buttonStyle(.bordered)
-                }
-                if let error = viewModel.libraryError {
-                    Text(error).font(.caption).foregroundStyle(.red)
-                }
-            }
-            .padding(.horizontal, 16)
-
-            if !movie.episodes.isEmpty {
-                episodesSection(movie)
-            }
+        return VStack(alignment: .leading, spacing: 26) {
+            cinematicHeader(movie)
+            actionPanel(movie)
+            if !movie.description.isEmpty { glassPanel(title: "Nội dung") { Text(movie.description).lineSpacing(5).foregroundStyle(.white.opacity(0.88)) } }
+            if !movie.episodes.isEmpty { episodesSection(movie) }
             peopleSection(movie)
             if !movie.related.isEmpty { relatedSection(movie.related) }
-        }
-        .padding(.bottom, 32)
+        }.padding(.bottom, 38)
+    }
+
+    private func cinematicHeader(_ movie: Movie) -> some View {
+        ZStack(alignment: .bottom) {
+            AsyncImage(url: movie.backdropURL) { phase in
+                if case .success(let image) = phase { image.resizable().scaledToFill() } else { CineVietTheme.secondaryBackground }
+            }.frame(height: 390).clipped()
+            LinearGradient(colors: [.clear, CineVietTheme.background.opacity(0.45), CineVietTheme.background], startPoint: .top, endPoint: .bottom)
+            HStack(alignment: .bottom, spacing: 16) {
+                AsyncImage(url: movie.posterURL) { phase in
+                    if case .success(let image) = phase { image.resizable().scaledToFill() } else { Color.white.opacity(0.08) }
+                }.frame(width: 112, height: 164).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).overlay { RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.2)) }.shadow(radius: 18)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(movie.title).font(.title.bold()).lineLimit(3)
+                    if !movie.titleEn.isEmpty { Text(movie.titleEn).font(.subheadline).foregroundStyle(.secondary).lineLimit(2) }
+                    FlowChips(values: metadata(movie), accentFirst: true)
+                }
+                Spacer(minLength: 0)
+            }.padding(16).cineGlass(cornerRadius: 24, tint: .orange).padding(.horizontal, 14)
+        }.frame(height: 390)
+    }
+
+    private func actionPanel(_ movie: Movie) -> some View {
+        VStack(spacing: 12) {
+            if let server = viewModel.selectedServer, let episode = server.items.first(where: { PlayerViewModel.directMediaURL(for: $0) != nil }) {
+                NavigationLink { PlayerView(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService) } label: { Label("Phát ngay", systemImage: "play.fill").frame(maxWidth: .infinity).padding(.vertical, 4) }.buttonStyle(.borderedProminent).tint(.orange)
+            }
+            HStack {
+                Button { Task { await viewModel.toggleFavorite() } } label: { Label(viewModel.isFavorite ? "Đã yêu thích" : "Yêu thích", systemImage: viewModel.isFavorite ? "heart.fill" : "heart") }.buttonStyle(.bordered)
+                Menu { ForEach(viewModel.playlists) { playlist in Button(playlist.name) { Task { await viewModel.addToPlaylist(playlist) } } }; Divider(); Button("Tạo playlist mới…") { showingNewPlaylist = true } } label: { Label("Playlist", systemImage: "text.badge.plus") }.buttonStyle(.bordered)
+            }
+            if let error = viewModel.libraryError { Text(error).font(.caption).foregroundStyle(.red) }
+        }.padding(16).cineGlass(cornerRadius: 22, tint: .orange).padding(.horizontal, 16)
     }
 
     private func episodesSection(_ movie: Movie) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Tập phim").font(.title2.bold()).padding(.horizontal, 16)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, server in
-                        Button(server.name) { viewModel.selectServer(index) }
-                            .buttonStyle(.borderedProminent)
-                            .tint(index == viewModel.selectedServerIndex ? .orange : .gray)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-            if let server = viewModel.selectedServer {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 8)], spacing: 8) {
-                    ForEach(server.items) { episode in
-                        NavigationLink {
-                            PlayerView(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService)
-                        } label: {
-                            HStack {
-                                Text(episode.name)
-                                Image(systemName: "play.fill")
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            GlassSectionHeader(title: "Tập phim")
+            ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 9) { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, server in Button(server.name) { viewModel.selectServer(index) }.buttonStyle(.borderedProminent).tint(index == viewModel.selectedServerIndex ? .orange : .gray.opacity(0.45)) } }.padding(.horizontal, 16) }
+            if let server = viewModel.selectedServer { LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in
+                if PlayerViewModel.directMediaURL(for: episode) != nil { NavigationLink { PlayerView(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService) } label: { Label(episode.name, systemImage: "play.fill").lineLimit(1).frame(maxWidth: .infinity).padding(.vertical, 9).cineGlass(cornerRadius: 14, tint: .orange) } }
+                else { Label(episode.name, systemImage: "nosign").lineLimit(1).frame(maxWidth: .infinity).padding(.vertical, 9).foregroundStyle(.secondary).cineGlass(cornerRadius: 14) }
+            } }.padding(.horizontal, 16) }
         }
     }
 
-    @ViewBuilder
-    private func peopleSection(_ movie: Movie) -> some View {
-        if !movie.directors.isEmpty || !movie.cast.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Diễn viên & đạo diễn").font(.title2.bold())
-                ForEach(movie.directors.prefix(5), id: \.name) { person in
-                    Text("Đạo diễn: \(person.name)").foregroundStyle(.secondary)
-                }
-                Text(movie.cast.prefix(20).map(\.name).joined(separator: " • "))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16)
-        }
-    }
+    @ViewBuilder private func peopleSection(_ movie: Movie) -> some View { if !movie.directors.isEmpty || !movie.cast.isEmpty { glassPanel(title: "Diễn viên & đạo diễn") { VStack(alignment: .leading, spacing: 8) { ForEach(movie.directors.prefix(5), id: \.name) { Text("Đạo diễn: \($0.name)").foregroundStyle(.secondary) }; Text(movie.cast.prefix(20).map(\.name).joined(separator: " • ")).foregroundStyle(.secondary) } } } }
+    private func relatedSection(_ movies: [Movie]) -> some View { VStack(alignment: .leading, spacing: 12) { GlassSectionHeader(title: "Có thể bạn thích"); ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movies) { MovieCardView(movie: $0) } }.padding(.horizontal, 16) } } }
+    private func glassPanel<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View { VStack(alignment: .leading, spacing: 12) { Text(title).font(.title3.bold()); content() }.frame(maxWidth: .infinity, alignment: .leading).padding(16).cineGlass(cornerRadius: 22).padding(.horizontal, 16) }
+    private func metadata(_ movie: Movie) -> [String] { [movie.releaseYear.map(String.init), movie.quality.nonEmpty, movie.language.nonEmpty, movie.rating.map { String(format: "★ %.1f", $0) }].compactMap { $0 } + movie.genres.prefix(3) }
+    private var detailBackground: some View { ZStack { CineVietTheme.background.ignoresSafeArea(); RadialGradient(colors: [.orange.opacity(0.15), .clear], center: .topTrailing, startRadius: 20, endRadius: 520).ignoresSafeArea() } }
+}
 
-    private func relatedSection(_ movies: [Movie]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Có thể bạn thích").font(.title2.bold()).padding(.horizontal, 16)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    ForEach(movies) { MovieCardView(movie: $0) }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
+private struct FlowChips: View {
+    let values: [String]; var accentFirst = false
+    var body: some View { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 7) { ForEach(Array(values.enumerated()), id: \.offset) { index, value in Text(value).font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 5).background((accentFirst && index == 0 ? Color.orange : Color.white).opacity(0.14), in: Capsule()).overlay { Capsule().stroke((accentFirst && index == 0 ? Color.orange : Color.white).opacity(0.25)) } } } } }
 }
