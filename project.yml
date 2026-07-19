@@ -16,6 +16,7 @@ targets:
       - path: CineViet
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_CFBundleDisplayName: CineViet
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_UIUserInterfaceStyle: Dark
