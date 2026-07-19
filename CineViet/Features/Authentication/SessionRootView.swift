@@ -31,6 +31,8 @@ struct SessionRootView: View {
                     movieService: container.movieService,
                     watchHistoryService: container.watchHistoryService,
                     libraryService: container.libraryService,
+                    authenticationService: container.authenticationService,
+                    updateUser: viewModel.updateUser,
                     logout: viewModel.logout
                 )
             }

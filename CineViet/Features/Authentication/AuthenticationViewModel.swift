@@ -112,6 +112,10 @@ final class AuthenticationViewModel: ObservableObject {
         }
     }
 
+    func updateUser(_ user: User) {
+        sessionState = .signedIn(user)
+    }
+
     private func userFacingMessage(for error: Error) -> String {
         if let localized = error as? LocalizedError,
            let message = localized.errorDescription,

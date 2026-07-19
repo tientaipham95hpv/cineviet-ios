@@ -5,6 +5,8 @@ struct MainTabView: View {
     let movieService: MovieServicing
     let watchHistoryService: WatchHistoryServicing
     let libraryService: LibraryServicing
+    let authenticationService: AuthenticationServicing
+    let updateUser: (User) -> Void
     let logout: () -> Void
     @State private var selectedTab = 0
     @State private var hidesFloatingNavigation = false
@@ -14,7 +16,7 @@ struct MainTabView: View {
             HomeView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService, logout: logout).tag(0)
             SearchView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(1)
             PlaylistsView(libraryService: libraryService).tag(2)
-            AccountView(user: user, logout: logout).tag(3)
+            AccountView(user: user, service: authenticationService, updateUser: updateUser, logout: logout).tag(3)
             FavoritesView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(4)
         }
         .toolbar(.hidden, for: .tabBar)
@@ -103,9 +105,4 @@ extension View {
 extension Notification.Name {
     static let cineVietPlayerDidAppear = Notification.Name("cineviet.player.didAppear")
     static let cineVietPlayerDidDisappear = Notification.Name("cineviet.player.didDisappear")
-}
-
-struct AccountView: View {
-    let user: User; let logout: () -> Void
-    var body: some View { NavigationStack { List { Section("Tài khoản") { LabeledContent("Tên", value: user.name ?? user.username ?? "CineViet"); if let email = user.email { LabeledContent("Email", value: email) }; LabeledContent("Hạng", value: user.isVip ? "VIP" : "Thành viên"); if let expires = user.vipExpiresAt { LabeledContent("VIP đến", value: expires) } }; Button("Đăng xuất", role: .destructive, action: logout) }.scrollContentBackground(.hidden).background(CineVietTheme.background.ignoresSafeArea()).navigationTitle("Tài khoản") } }
 }

@@ -42,6 +42,26 @@ struct GoogleLoginRequest: Encodable {
     let remember: Bool
 }
 
+struct ProfileUpdateRequest: Encodable {
+    let name: String
+}
+
+struct ChangePasswordRequest: Encodable {
+    let currentPassword: String
+    let newPassword: String
+}
+
+struct MembershipSummary: Decodable, Equatable {
+    let entitlement: Entitlement?
+
+    struct Entitlement: Decodable, Equatable {
+        let active: Bool
+        let remainingDays: Int?
+        let expiresAt: String?
+        let source: String?
+    }
+}
+
 /// Flutter intentionally keeps `/auth/me` as a dynamic map. This model only
 /// types fields that Flutter reads and preserves all remaining JSON fields.
 struct User: Decodable, Identifiable, Equatable {

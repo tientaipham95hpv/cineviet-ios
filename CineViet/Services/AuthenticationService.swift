@@ -5,6 +5,9 @@ protocol AuthenticationServicing {
     func loginWithGoogle(idToken: String) async throws -> AuthResponse
     func currentUser() async throws -> User
     func refreshSession() async throws -> AuthResponse
+    func updateProfile(name: String) async throws -> User
+    func changePassword(current: String, new: String) async throws
+    func membershipSummary() async throws -> MembershipSummary
     func logout() throws
 }
 
@@ -51,6 +54,21 @@ final class AuthenticationService: AuthenticationServicing {
         let response: AuthResponse = try await apiClient.send(request)
         try tokenStore.save(try response.tokens(fallbackRefreshToken: refreshToken))
         return response
+    }
+
+    func updateProfile(name: String) async throws -> User {
+        let request = try APIRequest.json(method: .patch, path: "/user/profile", body: ProfileUpdateRequest(name: name), requiresAuthentication: true)
+        return try await apiClient.send(request)
+    }
+
+    func changePassword(current: String, new: String) async throws {
+        let request = try APIRequest.json(method: .post, path: "/user/change-password", body: ChangePasswordRequest(currentPassword: current, newPassword: new), requiresAuthentication: true)
+        try await apiClient.send(request)
+    }
+
+    func membershipSummary() async throws -> MembershipSummary {
+        let request = APIRequest(method: .get, path: "/donations/me", requiresAuthentication: true)
+        return try await apiClient.send(request)
     }
 
     func logout() throws {
