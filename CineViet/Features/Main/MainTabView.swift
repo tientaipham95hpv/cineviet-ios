@@ -10,56 +10,63 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService, logout: logout)
-                .tag(0).tabItem { Label("Trang chủ", systemImage: selectedTab == 0 ? "house.fill" : "house") }
-            SearchView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService)
-                .tag(1).tabItem { Label("Tìm kiếm", systemImage: "magnifyingglass") }
-            FavoritesView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService)
-                .tag(2).tabItem { Label("Yêu thích", systemImage: selectedTab == 2 ? "heart.fill" : "heart") }
-            PlaylistsView(libraryService: libraryService)
-                .tag(3).tabItem { Label("Playlist", systemImage: selectedTab == 3 ? "rectangle.stack.fill" : "rectangle.stack") }
-            AccountView(user: user, logout: logout)
-                .tag(4).tabItem { Label("Tài khoản", systemImage: selectedTab == 4 ? "person.crop.circle.fill" : "person.crop.circle") }
+            HomeView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService, logout: logout).tag(0)
+            SearchView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(1)
+            PlaylistsView(libraryService: libraryService).tag(2)
+            AccountView(user: user, logout: logout).tag(3)
+            FavoritesView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(4)
         }
+        .toolbar(.hidden, for: .tabBar)
+        .safeAreaInset(edge: .bottom, spacing: -2) { floatingNavigation }
         .tint(CineVietTheme.accent)
         .preferredColorScheme(.dark)
-        .onAppear {
-            let appearance = UITabBarAppearance()
-            appearance.configureWithTransparentBackground()
-            appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
-            appearance.backgroundColor = UIColor(red: 7 / 255, green: 9 / 255, blue: 13 / 255, alpha: 0.78)
-            appearance.shadowColor = UIColor(red: 45 / 255, green: 224 / 255, blue: 160 / 255, alpha: 0.16)
-            let normal = appearance.stackedLayoutAppearance.normal
-            normal.iconColor = UIColor(red: 184 / 255, green: 196 / 255, blue: 212 / 255, alpha: 0.72)
-            normal.titleTextAttributes = [.foregroundColor: UIColor(red: 184 / 255, green: 196 / 255, blue: 212 / 255, alpha: 0.72), .font: UIFont.systemFont(ofSize: 10, weight: .semibold)]
-            let selected = appearance.stackedLayoutAppearance.selected
-            selected.iconColor = UIColor(red: 45 / 255, green: 224 / 255, blue: 160 / 255, alpha: 1)
-            selected.titleTextAttributes = [.foregroundColor: UIColor(red: 45 / 255, green: 224 / 255, blue: 160 / 255, alpha: 1), .font: UIFont.systemFont(ofSize: 10, weight: .bold)]
-            UITabBar.appearance().standardAppearance = appearance
-            UITabBar.appearance().scrollEdgeAppearance = appearance
-            UITabBar.appearance().isTranslucent = true
+    }
+
+    private var floatingNavigation: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 2) {
+                navItem(0, "house.fill", "Trang chủ")
+                navItem(1, "magnifyingglass", "Tìm kiếm")
+                navItem(2, "rectangle.stack.fill", "Playlist")
+                navItem(3, "person.fill", "Tài khoản")
+            }
+            .padding(7)
+            .background(.ultraThinMaterial, in: Capsule())
+            .background(Capsule().fill(CineVietTheme.panel.opacity(0.82)))
+            .overlay { Capsule().stroke(.white.opacity(0.34), lineWidth: 1) }
+            .shadow(color: .black.opacity(0.46), radius: 22, y: 10)
+
+            Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) { selectedTab = 4 } } label: {
+                Image(systemName: selectedTab == 4 ? "heart.fill" : "heart")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(selectedTab == 4 ? .black : .white)
+                    .frame(width: 54, height: 54)
+                    .background(selectedTab == 4 ? CineVietTheme.accent : CineVietTheme.panel.opacity(0.88), in: Circle())
+                    .overlay { Circle().stroke(selectedTab == 4 ? CineVietTheme.accent.opacity(0.85) : .white.opacity(0.38), lineWidth: 1.5) }
+                    .shadow(color: (selectedTab == 4 ? CineVietTheme.accent : .black).opacity(0.4), radius: 16, y: 7)
+            }
+            .accessibilityLabel("Yêu thích")
         }
+        .padding(.horizontal, 18)
+        .padding(.top, 6)
+        .padding(.bottom, 5)
+    }
+
+    private func navItem(_ index: Int, _ icon: String, _ label: String) -> some View {
+        Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { selectedTab = index } } label: {
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 19, weight: .semibold))
+                if selectedTab == index { Text(label).font(.system(size: 9, weight: .bold)).lineLimit(1) }
+            }
+            .foregroundStyle(selectedTab == index ? .black : CineVietTheme.textMuted)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(selectedTab == index ? CineVietTheme.accent : .clear, in: Capsule())
+        }
+        .accessibilityLabel(label)
     }
 }
 
 struct AccountView: View {
-    let user: User
-    let logout: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Tài khoản") {
-                    LabeledContent("Tên", value: user.name ?? user.username ?? "CineViet")
-                    if let email = user.email { LabeledContent("Email", value: email) }
-                    LabeledContent("Hạng", value: user.isVip ? "VIP" : "Thành viên")
-                    if let expires = user.vipExpiresAt { LabeledContent("VIP đến", value: expires) }
-                }
-                Button("Đăng xuất", role: .destructive, action: logout)
-            }
-            .scrollContentBackground(.hidden)
-            .background(CineVietTheme.background.ignoresSafeArea())
-            .navigationTitle("Tài khoản")
-        }
-    }
+    let user: User; let logout: () -> Void
+    var body: some View { NavigationStack { List { Section("Tài khoản") { LabeledContent("Tên", value: user.name ?? user.username ?? "CineViet"); if let email = user.email { LabeledContent("Email", value: email) }; LabeledContent("Hạng", value: user.isVip ? "VIP" : "Thành viên"); if let expires = user.vipExpiresAt { LabeledContent("VIP đến", value: expires) } }; Button("Đăng xuất", role: .destructive, action: logout) }.scrollContentBackground(.hidden).background(CineVietTheme.background.ignoresSafeArea()).navigationTitle("Tài khoản") } }
 }

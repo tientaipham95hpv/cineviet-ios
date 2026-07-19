@@ -5,6 +5,7 @@ struct HomeView: View {
     let logout: () -> Void
     let watchHistoryService: WatchHistoryServicing
     let libraryService: LibraryServicing
+    @State private var featuredIndex = 0
 
     init(movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing, logout: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(movieService: movieService, watchHistoryService: watchHistoryService))
@@ -68,9 +69,8 @@ struct HomeView: View {
         case .loaded(let data):
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 30) {
-                    if let hero = data.featured.first {
-                        heroView(hero)
-                            .onTapGesture { viewModel.selectedMovie = hero }
+                    if !data.featured.isEmpty {
+                        featuredCarousel(Array(data.featured.prefix(7)))
                     }
                     ForEach(data.sections) { section in
                         movieSection(section)
@@ -82,40 +82,51 @@ struct HomeView: View {
         }
     }
 
-    private func heroView(_ movie: Movie) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: movie.backdropURL) { phase in
-                if case .success(let image) = phase {
-                    image.resizable().scaledToFill()
-                } else {
-                    Color.white.opacity(0.08)
+    private func featuredCarousel(_ movies: [Movie]) -> some View {
+        let index = min(featuredIndex, max(movies.count - 1, 0))
+        let movie = movies[index]
+        return VStack(spacing: 17) {
+            HStack { Text("PHIM NỔI BẬT").font(.caption.bold()).tracking(1.5).foregroundStyle(CineVietTheme.accent); Spacer(); Text("\(index + 1)/\(movies.count)").font(.caption).foregroundStyle(CineVietTheme.textMuted) }.padding(.horizontal, 20)
+            TabView(selection: $featuredIndex) {
+                ForEach(Array(movies.enumerated()), id: \.element.id) { position, item in
+                    AsyncImage(url: item.posterURL) { phase in
+                        if case .success(let image) = phase { image.resizable().scaledToFill() } else { CineVietTheme.panel }
+                    }
+                    .frame(width: 220, height: 320).clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: 25).stroke(position == index ? CineVietTheme.accent.opacity(0.9) : .white.opacity(0.22), lineWidth: position == index ? 2 : 1) }
+                    .shadow(color: position == index ? CineVietTheme.accent.opacity(0.2) : .black.opacity(0.4), radius: 20, y: 10)
+                    .tag(position).padding(.horizontal, 58)
                 }
             }
-            .frame(height: 310)
-            .clipped()
+            .tabViewStyle(.page(indexDisplayMode: .never)).frame(height: 326)
 
-            LinearGradient(
-                colors: [.clear, CineVietTheme.background.opacity(0.97)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(movie.title)
-                    .font(.largeTitle.bold())
-                    .lineLimit(2)
-                if !movie.metadataLine.isEmpty {
-                    Text(movie.metadataLine).foregroundStyle(.secondary)
-                }
+            VStack(spacing: 10) {
+                Text(movie.title).font(.title2.bold()).multilineTextAlignment(.center).lineLimit(2)
+                if !movie.titleEn.isEmpty { Text(movie.titleEn).font(.subheadline).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }
+                HStack(spacing: 8) {
+                    Button { viewModel.selectedMovie = movie } label: { Label("Xem phim", systemImage: "play.fill").frame(maxWidth: .infinity).padding(.vertical, 5) }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black)
+                    Button { viewModel.selectedMovie = movie } label: { Label("Thông tin", systemImage: "info.circle").frame(maxWidth: .infinity).padding(.vertical, 5) }.buttonStyle(.bordered).tint(.white)
+                }.padding(.horizontal, 32)
+                featuredMetadata(movie)
+                if !movie.description.isEmpty { Text(movie.description).font(.subheadline).foregroundStyle(CineVietTheme.textMuted).multilineTextAlignment(.center).lineLimit(2).padding(.horizontal, 24) }
             }
-            .padding(20)
-            .cineGlass(cornerRadius: 18, tint: CineVietTheme.accent)
-            .padding(16)
         }
-        .frame(height: 310)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .padding(.horizontal, 12)
-        .contentShape(Rectangle())
+        .padding(.top, 8)
+    }
+
+    private func featuredMetadata(_ movie: Movie) -> some View {
+        HStack(spacing: 7) {
+            if let rating = movie.rating { chip(String(format: "IMDb %.1f", rating), accent: true) }
+            if !movie.quality.isEmpty { chip(movie.quality, accent: true) }
+            if let year = movie.releaseYear { chip(String(year)) }
+            if !movie.type.isEmpty { chip(movie.type == "series" ? "Phim bộ" : "Phim lẻ") }
+        }
+    }
+
+    private func chip(_ value: String, accent: Bool = false) -> some View {
+        Text(value).font(.caption2.bold()).foregroundStyle(accent ? CineVietTheme.accent : .white)
+            .padding(.horizontal, 7).padding(.vertical, 5).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+            .overlay { RoundedRectangle(cornerRadius: 6).stroke(accent ? CineVietTheme.accent.opacity(0.8) : .white.opacity(0.28)) }
     }
 
     private func movieSection(_ section: HomeSection) -> some View {
@@ -137,7 +148,7 @@ struct HomeView: View {
         ZStack {
             CineVietTheme.background.ignoresSafeArea()
             RadialGradient(colors: [CineVietTheme.accent.opacity(0.16), .clear], center: .topTrailing, startRadius: 10, endRadius: 430).ignoresSafeArea()
-            RadialGradient(colors: [.purple.opacity(0.12), .clear], center: .bottomLeading, startRadius: 10, endRadius: 500).ignoresSafeArea()
+            RadialGradient(colors: [CineVietTheme.accentDeep.opacity(0.11), .clear], center: .bottomLeading, startRadius: 10, endRadius: 500).ignoresSafeArea()
         }
     }
 }
