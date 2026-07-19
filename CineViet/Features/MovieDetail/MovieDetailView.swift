@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UIKit
 
 /// SwiftUI disables UINavigationController's edge-pop gesture when its native
 /// back button is hidden. Re-enable the existing gesture without adding a
@@ -55,13 +56,16 @@ struct MovieDetailView: View {
             .overlay(alignment: .topLeading) {
                 backButton
                     .padding(.leading, 16)
-                    .padding(.top, max(10, geometry.safeAreaInsets.top + 8))
+                    // This screen draws its hero below system chrome, so the
+                    // GeometryReader inset can be zero. Read the window inset
+                    // as the iOS 16 fallback and keep the 48pt control clear.
+                    .padding(.top, max(12, systemTopSafeAreaInset + 8))
                     .zIndex(20)
             }
         }
         // Let the hero occupy the status-bar region. The pinned Back overlay
         // uses GeometryReader's safe-area inset to remain below system UI.
-        .ignoresSafeArea(edges: .top)
+        .ignoresSafeArea(.container, edges: [.top, .bottom])
         .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar)
         .background(InteractivePopGestureRestorer())
@@ -97,7 +101,19 @@ struct MovieDetailView: View {
             // Negative layout padding creates the intended hero overlap without
             // leaving the empty space that a visual offset reserves below it.
             .padding(.top, -24)
-        }.fixedSize(horizontal: false, vertical: true).frame(width: width, alignment: .leading).padding(.bottom, 12)
+        }
+        .frame(width: width, alignment: .leading)
+        // The detail screen covers the TabView's inherited bottom inset. Keep
+        // only a small content cushion rather than a tab-bar-sized blank band.
+        .padding(.bottom, 8)
+    }
+
+    private var systemTopSafeAreaInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.top ?? 0
     }
 
     private func hero(_ movie: Movie) -> some View {
