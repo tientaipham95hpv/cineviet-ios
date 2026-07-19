@@ -10,11 +10,14 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var currentServer: EpisodeServer
     @Published private(set) var selectedAudioKey: String?
     @Published var selectedSubtitleLanguage: String
+    @Published private(set) var overlaySubtitle: String?
 
     let movie: Movie
     let player = AVPlayer()
 
     private var itemObservation: NSKeyValueObservation?
+    private var timeObserver: Any?
+    private var subtitleTask: Task<Void, Never>?
     private let defaults: UserDefaults
     var availableAudio: [EpisodeAudioSource] { currentEpisode.audioSources }
     var availableSubtitles: [EpisodeSubtitleTrack] { currentEpisode.subtitles }
@@ -30,7 +33,11 @@ final class PlayerViewModel: ObservableObject {
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
     }
 
-    deinit { itemObservation?.invalidate() }
+    deinit {
+        itemObservation?.invalidate()
+        if let timeObserver { player.removeTimeObserver(timeObserver) }
+        subtitleTask?.cancel()
+    }
 
     func start() {
         configureAudioSession()
@@ -40,6 +47,8 @@ final class PlayerViewModel: ObservableObject {
     func stop() {
         player.pause()
         itemObservation?.invalidate()
+        if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
+        subtitleTask?.cancel()
     }
 
     func play(_ episode: EpisodeItem, server: EpisodeServer) {
@@ -58,10 +67,14 @@ final class PlayerViewModel: ObservableObject {
         selectedSubtitleLanguage = language
         defaults.set(language, forKey: "cineviet.player.subtitle.\(movie.id)")
         applyEmbeddedSubtitleSelection()
+        startExternalSubtitleOverlay(for: currentEpisode)
     }
 
     private func load(_ episode: EpisodeItem, server: EpisodeServer) {
         itemObservation?.invalidate()
+        overlaySubtitle = nil
+        subtitleTask?.cancel()
+        if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
         errorMessage = nil
         isLoading = true
 
@@ -83,6 +96,7 @@ final class PlayerViewModel: ObservableObject {
                     self.isLoading = false
                     self.errorMessage = nil
                     self.applyEmbeddedSubtitleSelection()
+                    self.startExternalSubtitleOverlay(for: episode)
                     self.player.play()
                 case .failed:
                     self.isLoading = false
@@ -96,6 +110,39 @@ final class PlayerViewModel: ObservableObject {
             }
         }
         player.replaceCurrentItem(with: item)
+    }
+
+    private func startExternalSubtitleOverlay(for episode: EpisodeItem) {
+        overlaySubtitle = nil
+        subtitleTask?.cancel()
+        if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
+        guard selectedSubtitleLanguage != "off",
+              let track = episode.subtitles.first(where: { $0.lang.lowercased() == selectedSubtitleLanguage.lowercased() }),
+              let url = subtitleURL(track.url) else { return }
+        subtitleTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard !Task.isCancelled, let source = String(data: data, encoding: .utf8) else { return }
+                let cues = SubtitleParser.parse(source, format: track.format)
+                guard !cues.isEmpty else { return }
+                self.timeObserver = self.player.addPeriodicTimeObserver(
+                    forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main
+                ) { [weak self] time in
+                    guard let self else { return }
+                    let seconds = time.seconds
+                    self.overlaySubtitle = cues.first(where: { seconds >= $0.start && seconds < $0.end })?.text
+                }
+            } catch { }
+        }
+    }
+
+    private func subtitleURL(_ raw: String) -> URL? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if value.hasPrefix("//") { return URL(string: "https:\(value)") }
+        if let url = URL(string: value), url.scheme == "http" || url.scheme == "https" { return url }
+        return URL(string: value, relativeTo: AppEnvironment.siteBaseURL)?.absoluteURL
     }
 
     private func applyEmbeddedSubtitleSelection() {

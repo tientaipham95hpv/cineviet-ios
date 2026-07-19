@@ -15,6 +15,21 @@ struct PlayerView: View {
             ZStack {
                 NativePlayerView(player: viewModel.player)
                     .ignoresSafeArea(edges: .horizontal)
+                if let subtitle = viewModel.overlaySubtitle {
+                    VStack {
+                        Spacer()
+                        Text(subtitle)
+                            .font(.headline)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 7))
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 18)
+                    }
+                    .allowsHitTesting(false)
+                }
                 if viewModel.isLoading {
                     ProgressView("Đang tải nguồn phát…")
                         .tint(.orange)
@@ -65,7 +80,7 @@ struct PlayerView: View {
                                              selected: viewModel.selectedSubtitleLanguage == subtitle.lang)
                             }
                         }
-                        Text("AVPlayer tự chọn track phụ đề tương ứng khi nguồn HLS cung cấp. Phụ đề rời SRT/WebVTT sẽ được hỗ trợ ở lớp overlay tiếp theo.")
+                        Text("Hỗ trợ track HLS nhúng và phụ đề rời SRT/WebVTT đồng bộ theo thời gian phát.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
