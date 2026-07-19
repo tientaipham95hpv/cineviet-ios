@@ -156,13 +156,26 @@ struct PlayerView: View {
     }
 
     private var subtitleLayer: some View {
-        VStack {
-            Spacer()
+        GeometryReader { geometry in
             if let subtitle = viewModel.overlaySubtitle {
-                Text(subtitle).font(.system(size: viewModel.subtitleStyle.size, weight: .bold, design: viewModel.subtitleStyle.font == "Lora" ? .serif : .rounded)).foregroundStyle(Color.playerHex(viewModel.subtitleStyle.colorHex)).multilineTextAlignment(.center)
-                    .shadow(color: .black, radius: 2).padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 28).padding(.bottom, (controlsVisible && !controlsLocked ? 126 : 22) + viewModel.subtitleStyle.bottom)
+                let dual = viewModel.selectedSubtitleLanguage == "dual"
+                let blocks = dual ? subtitle.components(separatedBy: "\n") : [subtitle]
+                let viBottom = max(viewModel.subtitleStyles["vi"]?.bottom ?? 7, viewModel.subtitleStyles["en"]?.bottom ?? 20)
+                let enBottom = min(viewModel.subtitleStyles["vi"]?.bottom ?? 7, viewModel.subtitleStyles["en"]?.bottom ?? 20)
+                ZStack(alignment: .bottom) {
+                    ForEach(Array(blocks.enumerated()), id: \.offset) { index, text in
+                        let language = dual && index > 0 ? "en" : (viewModel.selectedSubtitleLanguage == "en" ? "en" : "vi")
+                        let style = viewModel.subtitleStyles[language] ?? (language == "en" ? .english : .vietnamese)
+                        Text(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                            .font(.custom(style.font, fixedSize: style.size).weight(.bold))
+                            .foregroundStyle(Color.playerHex(style.colorHex))
+                            .multilineTextAlignment(.center)
+                            .shadow(color: .black, radius: 4, x: 0, y: 1)
+                            .shadow(color: .black, radius: 8, x: 0, y: 2)
+                            .padding(.horizontal, 28)
+                            .padding(.bottom, geometry.size.height * ((dual ? (index > 0 ? enBottom : viBottom) : style.bottom) / 100))
+                    }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
         }.allowsHitTesting(false)
     }
@@ -207,7 +220,7 @@ struct PlayerView: View {
                         .buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black).padding(.top, 8)
                 }
             case .subtitleSettings:
-                SubtitleSettingsPanel(style: viewModel.subtitleStyle) { viewModel.updateSubtitleStyle($0) }
+                SubtitleSettingsPanel(styles: viewModel.subtitleStyles, onChange: { language, style in viewModel.updateSubtitleStyle(style, language: language) }, onReset: viewModel.resetSubtitleStyles)
             }
         }
     }
@@ -243,21 +256,33 @@ private struct SelectionRow: View {
 }
 
 private struct SubtitleSettingsPanel: View {
-    @State var style: PlayerViewModel.SubtitleStyle
-    let onChange: (PlayerViewModel.SubtitleStyle) -> Void
+    let styles: [String: PlayerViewModel.SubtitleStyle]
+    let onChange: (String, PlayerViewModel.SubtitleStyle) -> Void
+    let onReset: () -> Void
+    @State private var language = "vi"
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Xem trước").font(.headline)
-            Text("Subtitle preview").font(.system(size: style.size, weight: .bold, design: style.font == "Lora" ? .serif : .rounded)).foregroundStyle(color).frame(maxWidth: .infinity).padding(.vertical, 18).background(.black).clipShape(RoundedRectangle(cornerRadius: 12))
-            Text("Font: \(style.font)")
-            Picker("Font", selection: Binding(get: { style.font }, set: { style.font = $0; onChange(style) })) { ForEach(["Lora", "Plus Jakarta Sans", "Arial", "Tahoma"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
-            Text("Cỡ chữ: \(Int(style.size))"); Slider(value: Binding(get: { style.size }, set: { style.size = $0; onChange(style) }), in: 10...50, step: 1).tint(CineVietTheme.accent)
-            Text("Vị trí: \(Int(style.bottom))"); Slider(value: Binding(get: { style.bottom }, set: { style.bottom = $0; onChange(style) }), in: 2...30, step: 1).tint(CineVietTheme.accent)
-            HStack { Text("Màu chữ"); ForEach(["FFFFFF", "FFFF99", "FFEB3B", "80D8FF", "FFB3C7"], id: \.self) { hex in Button { style.colorHex = hex; onChange(style) } label: { Circle().fill(Color.playerHex(hex)).frame(width: 30, height: 30).overlay { Circle().stroke(.white, lineWidth: style.colorHex == hex ? 3 : 0) } } } }
-            Spacer()
-        }.padding(20)
+        let style = styles[language] ?? (language == "en" ? .english : .vietnamese)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Picker("Ngôn ngữ", selection: $language) { Text("Phụ đề chính").tag("vi"); Text("Song ngữ / Anh").tag("en") }.pickerStyle(.segmented)
+                VStack(spacing: 0) {
+                    Text("Đây là nội dung phụ đề mẫu").font(.custom(styles["vi"]?.font ?? "Lora", fixedSize: styles["vi"]?.size ?? 30).weight(.bold)).foregroundStyle(Color.playerHex(styles["vi"]?.colorHex ?? "FFFFFF"))
+                    Text("Subtitle preview").font(.custom(styles["en"]?.font ?? "Lora", fixedSize: styles["en"]?.size ?? 25).weight(.bold)).foregroundStyle(Color.playerHex(styles["en"]?.colorHex ?? "FFFF99"))
+                }.frame(maxWidth: .infinity).padding(.vertical, 24).background(.black, in: RoundedRectangle(cornerRadius: 12))
+                Text(language == "vi" ? "Phụ đề chính" : "Song ngữ / Phụ đề Anh").font(.headline)
+                Text("Font chữ").font(.subheadline.bold())
+                Picker("Font chữ", selection: Binding(get: { style.font }, set: { onChange(language, styleWith(style, font: $0)) })) { ForEach(["Lora", "Plus Jakarta Sans", "Arial", "Tahoma"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
+                Text("Cỡ chữ: \(Int(style.size))px")
+                Slider(value: Binding(get: { style.size }, set: { onChange(language, styleWith(style, size: $0)) }), in: 10...(language == "vi" ? 50 : 40), step: 1).tint(CineVietTheme.accent)
+                Text("Màu chữ").font(.subheadline.bold())
+                HStack(spacing: 14) { ForEach(["FFFFFF", "FFFF99", "FFEB3B", "80D8FF", "FFB3C7"], id: \.self) { hex in Button { onChange(language, styleWith(style, colorHex: hex)) } label: { Circle().fill(Color.playerHex(hex)).frame(width: 36, height: 36).overlay { Circle().stroke(CineVietTheme.accent, lineWidth: style.colorHex == hex ? 3 : 1) } } } }
+                Text("Vị trí: \(Int(style.bottom))% từ cạnh dưới")
+                Slider(value: Binding(get: { style.bottom }, set: { onChange(language, styleWith(style, bottom: $0)) }), in: 2...30, step: 1).tint(CineVietTheme.accent)
+                HStack { Button("Reset tất cả", action: onReset).buttonStyle(.bordered); Spacer(); Text("Thay đổi được áp dụng ngay").font(.caption).foregroundStyle(CineVietTheme.textMuted) }
+            }.padding(20)
+        }
     }
-    private var color: Color { Color.playerHex(style.colorHex) }
+    private func styleWith(_ style: PlayerViewModel.SubtitleStyle, font: String? = nil, size: Double? = nil, colorHex: String? = nil, bottom: Double? = nil) -> PlayerViewModel.SubtitleStyle { .init(font: font ?? style.font, size: size ?? style.size, colorHex: colorHex ?? style.colorHex, bottom: bottom ?? style.bottom) }
 }
 
 private extension Color {

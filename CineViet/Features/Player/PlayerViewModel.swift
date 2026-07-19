@@ -12,11 +12,13 @@ struct PlaybackCandidate: Identifiable, Equatable {
 
 @MainActor
 final class PlayerViewModel: ObservableObject {
-    struct SubtitleStyle: Equatable {
-        var font = "Lora"
-        var size: Double = 22
-        var colorHex = "FFFFFF"
-        var bottom: Double = 8
+    struct SubtitleStyle: Equatable, Codable {
+        var font: String = "Lora"
+        var size: Double
+        var colorHex: String
+        var bottom: Double
+        static let vietnamese = SubtitleStyle(size: 30, colorHex: "FFFFFF", bottom: 7)
+        static let english = SubtitleStyle(size: 25, colorHex: "FFFF99", bottom: 20)
     }
     @Published private(set) var isLoading = true
     @Published private(set) var isBuffering = false
@@ -27,7 +29,8 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var selectedAudioKey: String?
     @Published var selectedSubtitleLanguage: String
     @Published private(set) var overlaySubtitle: String?
-    @Published var subtitleStyle = SubtitleStyle()
+    @Published var subtitleStyles: [String: SubtitleStyle] = ["vi": .vietnamese, "en": .english]
+    var subtitleStyle: SubtitleStyle { subtitleStyles[selectedSubtitleLanguage == "en" ? "en" : "vi"] ?? .vietnamese }
     @Published private(set) var isPlaying = false
     @Published var playbackPosition: Double = 0
     @Published private(set) var playbackDuration: Double = 1
@@ -91,7 +94,7 @@ final class PlayerViewModel: ObservableObject {
             ?? restoredServer.items.first(where: { Self.sameEpisode($0, episode) }) ?? episode
         selectedAudioKey = defaults.string(forKey: "cineviet.player.audio.\(movie.id)")
         selectedSubtitleLanguage = defaults.string(forKey: "cineviet.player.subtitle.\(movie.id)") ?? "vi"
-        if let data = defaults.data(forKey: "cineviet.player.subtitle.style.\(movie.id)"), let saved = try? JSONDecoder().decode(SubtitleStyleDTO.self, from: data) { subtitleStyle = saved.value }
+        if let data = defaults.data(forKey: subtitleStylePreferenceKey), let saved = try? JSONDecoder().decode([String: SubtitleStyle].self, from: data) { subtitleStyles = ["vi": saved["vi"] ?? .vietnamese, "en": saved["en"] ?? .english] }
         isAutoPlayEnabled = defaults.object(forKey: "cineviet.player.autoplay") as? Bool ?? true
         player.allowsExternalPlayback = true
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
@@ -193,15 +196,17 @@ final class PlayerViewModel: ObservableObject {
         showNotice(language == "off" ? "Đã tắt phụ đề" : "Đã chọn phụ đề")
     }
 
-    func updateSubtitleStyle(_ style: SubtitleStyle) {
-        subtitleStyle = style
-        if let data = try? JSONEncoder().encode(SubtitleStyleDTO(value: style)) { defaults.set(data, forKey: subtitleStylePreferenceKey) }
+    func updateSubtitleStyle(_ style: SubtitleStyle, language: String? = nil) {
+        let key = language ?? (selectedSubtitleLanguage == "en" ? "en" : "vi")
+        subtitleStyles[key] = style
+        if let data = try? JSONEncoder().encode(subtitleStyles) { defaults.set(data, forKey: subtitleStylePreferenceKey) }
+        objectWillChange.send()
     }
 
-    private struct SubtitleStyleDTO: Codable {
-        let font: String; let size: Double; let colorHex: String; let bottom: Double
-        init(value: SubtitleStyle) { font = value.font; size = value.size; colorHex = value.colorHex; bottom = value.bottom }
-        var value: SubtitleStyle { SubtitleStyle(font: font, size: size, colorHex: colorHex, bottom: bottom) }
+    func resetSubtitleStyles() {
+        subtitleStyles = ["vi": .vietnamese, "en": .english]
+        if let data = try? JSONEncoder().encode(subtitleStyles) { defaults.set(data, forKey: subtitleStylePreferenceKey) }
+        objectWillChange.send()
     }
 
     func dismissNotice() { playbackNotice = nil; noticeTask?.cancel() }
