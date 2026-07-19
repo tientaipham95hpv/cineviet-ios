@@ -21,14 +21,17 @@ struct MovieDetailView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
                 switch viewModel.state {
                 case .loading: ProgressView("Đang tải thông tin phim…").tint(CineVietTheme.accent).frame(maxWidth: .infinity).frame(minHeight: 600)
-                case .failed(let message): ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message).frame(minHeight: 520).onTapGesture { Task { await viewModel.retry() } }
-                case .loaded: content(proxy)
+                case .failed(let message): ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message).frame(maxWidth: .infinity).frame(minHeight: 520).onTapGesture { Task { await viewModel.retry() } }
+                case .loaded: content(proxy, width: geometry.size.width)
+                }
                 }
             }
+            .frame(width: geometry.size.width)
         }
         .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar).hidesFloatingNavigation().task { await viewModel.load() }
@@ -39,10 +42,10 @@ struct MovieDetailView: View {
         .alert("CineViet", isPresented: Binding(get: { viewModel.message != nil }, set: { if !$0 { viewModel.message = nil } })) { Button("OK") { viewModel.message = nil } } message: { Text(viewModel.message ?? "") }
     }
 
-    private func content(_ proxy: ScrollViewProxy) -> some View {
+    private func content(_ proxy: ScrollViewProxy, width: CGFloat) -> some View {
         let movie = viewModel.displayedMovie
         return VStack(alignment: .leading, spacing: 0) {
-            hero(movie)
+            hero(movie).frame(width: width)
             VStack(alignment: .leading, spacing: 22) {
                 primaryActions(movie, proxy)
                 title(movie)
@@ -53,14 +56,15 @@ struct MovieDetailView: View {
                 section(movie)
             }
             .padding(.vertical, 22)
+            .frame(width: max(0, width - 24), alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 30, style: .continuous)
                     .fill(CineVietTheme.secondaryBackground.opacity(0.96))
                     .overlay { RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(.white.opacity(0.07)) }
             )
-            .padding(.horizontal, 12)
+            .frame(width: width, alignment: .center)
             .offset(y: -24)
-        }.padding(.bottom, 24)
+        }.frame(width: width, alignment: .leading).padding(.bottom, 24)
     }
 
     private func hero(_ movie: Movie) -> some View {
@@ -73,8 +77,8 @@ struct MovieDetailView: View {
 
     private func primaryActions(_ movie: Movie, _ proxy: ScrollViewProxy) -> some View {
         HStack(spacing: 12) {
-            Button { if let source = viewModel.firstPlayableSource { playerLaunch = PlayerLaunch(movie: movie, server: source.server, episode: source.episode) } } label: { Label(viewModel.firstPlayableSource == nil ? "Chưa có nguồn" : "Xem phim", systemImage: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill").frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: true)).disabled(viewModel.firstPlayableSource == nil).accessibilityHint("Mở trình phát toàn màn hình")
-            Button { selectedSection = .episodes; animate { proxy.scrollTo("detail-sections", anchor: .top) } } label: { Label("Tập phim", systemImage: "list.bullet").frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: false)).disabled(movie.episodes.isEmpty)
+            Button { if let source = viewModel.firstPlayableSource { playerLaunch = PlayerLaunch(movie: movie, server: source.server, episode: source.episode) } } label: { ViewThatFits { Label(viewModel.firstPlayableSource == nil ? "Chưa có nguồn" : "Xem phim", systemImage: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill"); Image(systemName: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: true)).disabled(viewModel.firstPlayableSource == nil).accessibilityHint("Mở trình phát toàn màn hình")
+            Button { selectedSection = .episodes; animate { proxy.scrollTo("detail-sections", anchor: .top) } } label: { ViewThatFits { Label("Tập phim", systemImage: "list.bullet"); Image(systemName: "list.bullet") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: false)).disabled(movie.episodes.isEmpty)
         }
         .padding(8)
         .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -95,7 +99,7 @@ struct MovieDetailView: View {
     private func actions(_ movie: Movie) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeading("Tiện ích", icon: "sparkles")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 action(viewModel.isFavorite ? "heart.fill" : "heart", viewModel.isFavorite ? "Đã thích" : "Yêu thích", accent: .pink, busy: viewModel.isFavoriteBusy) { Task { await viewModel.toggleFavorite() } }
                 Menu { ForEach(viewModel.playlists) { list in Button(list.name) { Task { await viewModel.addToPlaylist(list) } } }; Divider(); Button("Tạo playlist mới…") { showingNewPlaylist = true } } label: { actionLabel("text.badge.plus", "Playlist", accent: .cyan) }
                 action("star.fill", "Đánh giá", accent: .yellow) { showingRating = true }
