@@ -46,7 +46,7 @@ struct MovieDetailView: View {
         let movie = viewModel.displayedMovie
         return VStack(alignment: .leading, spacing: 0) {
             hero(movie).frame(width: width)
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 18) {
                 primaryActions(movie, proxy)
                 title(movie)
                 metadata(movie)
@@ -93,7 +93,7 @@ struct MovieDetailView: View {
     }
 
     @ViewBuilder private func synopsis(_ movie: Movie) -> some View {
-        if let text = movie.description.trimmedNonEmpty { VStack(alignment: .leading, spacing: 8) { Text("Nội dung phim").font(.headline); Text(text).foregroundStyle(CineVietTheme.textMuted).lineSpacing(5).lineLimit(synopsisExpanded ? nil : 4); Button(synopsisExpanded ? "Thu gọn" : "Xem thêm") { animate { synopsisExpanded.toggle() } }.font(.subheadline.bold()).foregroundStyle(CineVietTheme.accent).frame(minHeight: 44) }.padding(.horizontal, 18) }
+        if let text = movie.description.trimmedNonEmpty { VStack(alignment: .leading, spacing: 7) { Text("Nội dung phim").font(.headline); Text(text).foregroundStyle(CineVietTheme.textMuted).lineSpacing(5).lineLimit(synopsisExpanded ? nil : 4); Button(synopsisExpanded ? "Thu gọn" : "Xem thêm") { animate { synopsisExpanded.toggle() } }.font(.subheadline.bold()).foregroundStyle(CineVietTheme.accent).frame(minHeight: 34, alignment: .leading).contentShape(Rectangle()) }.padding(.horizontal, 18) }
     }
 
     private func actions(_ movie: Movie) -> some View {
@@ -134,7 +134,7 @@ struct MovieDetailView: View {
 
     @ViewBuilder private func section(_ movie: Movie) -> some View {
         switch selectedSection {
-        case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 16) { HStack(spacing: 12) { Text(movie.episodeCurrent.trimmedNonEmpty ?? "Danh sách tập").font(.headline); Spacer(minLength: 8); if movie.episodes.count > 1 { Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").font(.subheadline.weight(.semibold)).lineLimit(1).padding(.horizontal, 14).frame(minHeight: 42).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.system(size: 14, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity, minHeight: 56).background(LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous)).overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(CineVietTheme.border.opacity(0.9)) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? 0.45 : 1) } } }.padding(.horizontal, 18).padding(.top, 12) }
+        case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { if movie.episodes.count > 1 { HStack { Spacer(minLength: 0); Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").font(.subheadline.weight(.semibold)).lineLimit(1).padding(.horizontal, 14).frame(minHeight: 44).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.system(size: 14, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity, minHeight: 56).background(LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous)).overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(CineVietTheme.border.opacity(0.9)) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? 0.45 : 1) } } }.padding(.horizontal, 18).padding(.top, 8) }
         case .cast: VStack(alignment: .leading, spacing: 14) { ForEach(movie.directors.filter { !$0.name.isEmpty }, id: \.name) { Text("Đạo diễn: \($0.name)").font(.subheadline) }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92))], spacing: 16) { ForEach(movie.cast.filter { !$0.name.isEmpty }.prefix(30), id: \.name) { person in VStack { Circle().fill(CineVietTheme.panel).frame(width: 64, height: 64).overlay { Text(String(person.name.prefix(1))).font(.title2.bold()).foregroundStyle(CineVietTheme.accent) }; Text(person.name).font(.caption).multilineTextAlignment(.center).lineLimit(2) } } } }.padding(20)
         case .related: ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movie.related) { MovieCardView(movie: $0) } }.padding(20) }
         }
@@ -183,35 +183,83 @@ private struct EpisodeButtonStyle: ButtonStyle {
 
 private struct RatingSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var viewModel: MovieDetailViewModel
+
+    private var userRating: Int { viewModel.ratingStats?.userRating ?? 0 }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    Image(systemName: "star.circle.fill").font(.system(size: 54)).foregroundStyle(.yellow)
-                    if let stats = viewModel.ratingStats {
-                        Text(String(format: "%0.1f", stats.average)).font(.system(size: 46, weight: .bold, design: .rounded))
-                        if stats.total > 0 { Text("\(stats.total) lượt đánh giá").foregroundStyle(CineVietTheme.textMuted) }
-                    } else { Text("Chấm điểm phim").font(.title2.bold()) }
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 5), spacing: 9) {
-                        ForEach(1...10, id: \.self) { value in
-                            let selected = (viewModel.ratingStats?.userRating ?? 0) >= value
-                            Button { Task { await viewModel.rate(value) } } label: {
-                                VStack(spacing: 5) { Image(systemName: selected ? "star.fill" : "star"); Text("\(value)").font(.caption.bold()) }
-                                    .foregroundStyle(selected ? .black : .white)
-                                    .frame(maxWidth: .infinity, minHeight: 58)
-                                    .background(selected ? Color.yellow : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(.white.opacity(0.10)) }
-                            }.buttonStyle(EpisodeButtonStyle()).disabled(viewModel.isSubmitting)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 22) {
+                    ratingHero
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Điểm của bạn").font(.headline)
+                                Text(userRating > 0 ? "Đã chọn \(userRating)/10" : "Chạm để chấm từ 1 đến 10")
+                                    .font(.caption).foregroundStyle(CineVietTheme.textMuted)
+                            }
+                            Spacer()
+                            if userRating > 0 { Image(systemName: "checkmark.seal.fill").foregroundStyle(CineVietTheme.accent).accessibilityHidden(true) }
+                        }
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 10) {
+                            ForEach(1...10, id: \.self) { value in ratingButton(value) }
                         }
                     }
-                    if viewModel.isSubmitting { ProgressView("Đang gửi đánh giá…").tint(CineVietTheme.accent) }
+                    .padding(18)
+                    .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.08)) }
+                    if viewModel.isSubmitting {
+                        Label("Đang lưu đánh giá…", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted)
+                            .frame(minHeight: 44)
+                    }
                 }.padding(20)
             }
             .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
             .navigationTitle("Đánh giá phim").navigationBarTitleDisplayMode(.inline)
-            .toolbar { Button("Đóng") { dismiss() } }
+            .toolbar { Button("Đóng") { dismiss() }.frame(minHeight: 44) }
         }.presentationDetents([.medium, .large])
+    }
+
+    private var ratingHero: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(LinearGradient(colors: [Color.yellow.opacity(0.23), CineVietTheme.panel.opacity(0.9), CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing))
+            Circle().fill(Color.yellow.opacity(0.12)).frame(width: 150, height: 150).blur(radius: 12).offset(x: 105, y: -65)
+            VStack(spacing: 7) {
+                Image(systemName: "star.fill").font(.system(size: 28, weight: .bold)).foregroundStyle(.yellow).accessibilityHidden(true)
+                if let stats = viewModel.ratingStats {
+                    Text(String(format: "%0.1f", stats.average)).font(.system(size: 50, weight: .heavy, design: .rounded))
+                    Text("trên 10").font(.caption.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted)
+                    if stats.total > 0 { Text("\(stats.total) lượt đánh giá").font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.82)) }
+                } else {
+                    Text("Chấm điểm phim").font(.title2.bold())
+                    Text("Chia sẻ cảm nhận của bạn").font(.subheadline).foregroundStyle(CineVietTheme.textMuted)
+                }
+            }.padding(.vertical, 22)
+        }
+        .frame(minHeight: 190).clipped()
+        .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.10)) }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func ratingButton(_ value: Int) -> some View {
+        let isChoice = userRating == value
+        return Button { Task { await viewModel.rate(value) } } label: {
+            VStack(spacing: 5) {
+                Image(systemName: isChoice ? "star.fill" : "star").font(.system(size: 16, weight: .bold))
+                Text("\(value)").font(.system(size: 15, weight: .bold, design: .rounded))
+            }
+            .foregroundStyle(isChoice ? .black : .white)
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .background(isChoice ? AnyShapeStyle(LinearGradient(colors: [.yellow, .orange.opacity(0.85)], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(.white.opacity(0.065)), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(isChoice ? .white.opacity(0.32) : .white.opacity(0.08)) }
+            .scaleEffect(isChoice && !reduceMotion ? 1.03 : 1)
+        }
+        .buttonStyle(EpisodeButtonStyle()).disabled(viewModel.isSubmitting)
+        .accessibilityLabel("\(value) trên 10").accessibilityValue(isChoice ? "Đang chọn" : "")
     }
 }
 
@@ -220,33 +268,85 @@ private struct CommentsSheet: View {
     @ObservedObject var viewModel: MovieDetailViewModel
     @State private var text = ""
     @State private var spoiler = false
+    @FocusState private var composerFocused: Bool
+
+    private var cleanText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                List {
-                    if viewModel.comments.isEmpty && !viewModel.isSocialLoading { ContentMessage(icon: "bubble.left", title: "Chưa có bình luận", message: "Hãy là người đầu tiên chia sẻ cảm nhận.") }
-                    else { ForEach(viewModel.comments) { item in commentCard(item) } }
-                }.listStyle(.plain).scrollContentBackground(.hidden)
-                VStack(spacing: 10) {
-                    Toggle("Đánh dấu nội dung spoiler", isOn: $spoiler).font(.subheadline)
-                    HStack(alignment: .bottom, spacing: 10) {
-                        TextField("Viết bình luận…", text: $text, axis: .vertical).lineLimit(1...4).padding(12).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        Button { Task { if await viewModel.addComment(text, spoiler: spoiler) { text = "" } } } label: { Image(systemName: "paperplane.fill").frame(width: 48, height: 48).background(CineVietTheme.accent, in: Circle()).foregroundStyle(.black) }
-                            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || viewModel.isSubmitting)
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 12) {
+                    if viewModel.comments.isEmpty && !viewModel.isSocialLoading {
+                        VStack(spacing: 12) {
+                            Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: 34)).foregroundStyle(CineVietTheme.accent)
+                            Text("Chưa có bình luận").font(.title3.bold())
+                            Text("Hãy là người đầu tiên chia sẻ cảm nhận.").font(.subheadline).foregroundStyle(CineVietTheme.textMuted).multilineTextAlignment(.center)
+                        }.frame(maxWidth: .infinity, minHeight: 230).padding(24)
+                    } else {
+                        ForEach(viewModel.comments) { item in commentCard(item) }
                     }
-                }.padding(14).background(.ultraThinMaterial)
+                }.padding(.horizontal, 16).padding(.vertical, 14)
             }
-            .overlay { if viewModel.isSocialLoading { ProgressView().tint(CineVietTheme.accent) } }
+            .scrollDismissesKeyboard(.interactively)
+            .overlay { if viewModel.isSocialLoading { ProgressView().tint(CineVietTheme.accent).padding(20).background(.ultraThinMaterial, in: Circle()) } }
+            .safeAreaInset(edge: .bottom, spacing: 0) { composer }
             .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
-            .navigationTitle("Bình luận").navigationBarTitleDisplayMode(.inline).toolbar { Button("Đóng") { dismiss() } }
+            .navigationTitle("Bình luận").navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("Đóng") { dismiss() }.frame(minHeight: 44) }
         }.presentationDetents([.medium, .large])
     }
+
+    private var composer: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Label("Spoiler", systemImage: spoiler ? "eye.slash.fill" : "eye.slash")
+                    .font(.caption.weight(.semibold)).foregroundStyle(spoiler ? .orange : CineVietTheme.textMuted)
+                Spacer()
+                Toggle("Spoiler", isOn: $spoiler).labelsHidden().tint(.orange).accessibilityLabel("Đánh dấu nội dung spoiler")
+            }
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField("Viết bình luận…", text: $text, axis: .vertical)
+                    .focused($composerFocused).lineLimit(1...4).padding(.horizontal, 14).padding(.vertical, 12)
+                    .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(composerFocused ? CineVietTheme.accent.opacity(0.65) : .white.opacity(0.08)) }
+                Button { Task { if await viewModel.addComment(text, spoiler: spoiler) { text = ""; spoiler = false; composerFocused = false } } } label: {
+                    ZStack {
+                        Circle().fill(cleanText.count >= 2 ? CineVietTheme.accent : .white.opacity(0.10))
+                        if viewModel.isSubmitting { ProgressView().tint(.black) } else { Image(systemName: "paperplane.fill").font(.system(size: 17, weight: .bold)).foregroundStyle(cleanText.count >= 2 ? .black : CineVietTheme.textMuted) }
+                    }.frame(width: 50, height: 50)
+                }
+                .disabled(cleanText.count < 2 || viewModel.isSubmitting).accessibilityLabel(viewModel.isSubmitting ? "Đang gửi bình luận" : "Gửi bình luận")
+            }
+        }
+        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
+        .background(.ultraThinMaterial).overlay(alignment: .top) { Divider().opacity(0.25) }
+    }
+
     private func commentCard(_ item: MovieComment) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack { Image(systemName: "person.crop.circle.fill").foregroundStyle(CineVietTheme.accent); Text(item.userName).font(.headline); Spacer(); if item.isSpoiler { Label("Spoiler", systemImage: "eye.slash.fill").font(.caption).foregroundStyle(.orange) } }
-            Text(item.content).foregroundStyle(.white.opacity(0.9))
-            if !item.createdAt.isEmpty { Text(item.createdAt).font(.caption2).foregroundStyle(CineVietTheme.textMuted) }
-        }.padding(.vertical, 8).listRowBackground(CineVietTheme.panel.opacity(0.72)).listRowSeparator(.hidden)
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(LinearGradient(colors: [CineVietTheme.accent.opacity(0.9), .cyan.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 42, height: 42)
+                .overlay { Text(String(item.userName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased()).font(.headline.bold()).foregroundStyle(.black) }
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(item.userName).font(.subheadline.bold()).lineLimit(1)
+                    Spacer(minLength: 6)
+                    if !item.createdAt.isEmpty { Text(item.createdAt).font(.caption2).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }
+                }
+                if item.isSpoiler {
+                    Label("Có nội dung tiết lộ", systemImage: "eye.slash.fill")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                        .padding(.horizontal, 9).frame(minHeight: 26).background(.orange.opacity(0.12), in: Capsule())
+                }
+                Text(item.content).font(.body).foregroundStyle(.white.opacity(0.92)).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(15).frame(maxWidth: .infinity, alignment: .leading)
+        .background(LinearGradient(colors: [.white.opacity(0.065), CineVietTheme.panel.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.075)) }
+        .accessibilityElement(children: .combine)
     }
 }
 
