@@ -13,7 +13,7 @@ struct PlayerView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                VideoPlayer(player: viewModel.player)
+                NativePlayerView(player: viewModel.player)
                     .ignoresSafeArea(edges: .horizontal)
                 if viewModel.isLoading {
                     ProgressView("Đang tải nguồn phát…")
@@ -44,6 +44,32 @@ struct PlayerView: View {
                     Text("\(viewModel.currentServer.name) • \(viewModel.currentEpisode.name)")
                         .foregroundStyle(.secondary)
                 }
+                if !viewModel.availableAudio.isEmpty {
+                    Section("Âm thanh") {
+                        ForEach(viewModel.availableAudio) { source in
+                            Button { viewModel.selectAudio(source) } label: {
+                                selectionRow(source.label.isEmpty ? source.key : source.label,
+                                             selected: viewModel.selectedAudioKey == source.key)
+                            }
+                        }
+                    }
+                }
+                if !viewModel.availableSubtitles.isEmpty {
+                    Section("Phụ đề") {
+                        Button { viewModel.selectSubtitle("off") } label: {
+                            selectionRow("Tắt", selected: viewModel.selectedSubtitleLanguage == "off")
+                        }
+                        ForEach(viewModel.availableSubtitles) { subtitle in
+                            Button { viewModel.selectSubtitle(subtitle.lang) } label: {
+                                selectionRow(subtitle.label.isEmpty ? subtitle.lang : subtitle.label,
+                                             selected: viewModel.selectedSubtitleLanguage == subtitle.lang)
+                            }
+                        }
+                        Text("AVPlayer tự chọn track phụ đề tương ứng khi nguồn HLS cung cấp. Phụ đề rời SRT/WebVTT sẽ được hỗ trợ ở lớp overlay tiếp theo.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 ForEach(servers, id: \.name) { server in
                     Section(server.name) {
                         ForEach(server.items) { episode in
@@ -72,5 +98,13 @@ struct PlayerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
+    }
+
+    private func selectionRow(_ title: String, selected: Bool) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            if selected { Image(systemName: "checkmark").foregroundStyle(.orange) }
+        }
     }
 }

@@ -8,16 +8,24 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var currentEpisode: EpisodeItem
     @Published private(set) var currentServer: EpisodeServer
+    @Published private(set) var selectedAudioKey: String?
+    @Published var selectedSubtitleLanguage: String
 
     let movie: Movie
     let player = AVPlayer()
 
     private var itemObservation: NSKeyValueObservation?
+    private let defaults: UserDefaults
+    var availableAudio: [EpisodeAudioSource] { currentEpisode.audioSources }
+    var availableSubtitles: [EpisodeSubtitleTrack] { currentEpisode.subtitles }
 
-    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem) {
+    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, defaults: UserDefaults = .standard) {
         self.movie = movie
         currentServer = server
         currentEpisode = episode
+        self.defaults = defaults
+        selectedAudioKey = defaults.string(forKey: "cineviet.player.audio.\(movie.id)")
+        selectedSubtitleLanguage = defaults.string(forKey: "cineviet.player.subtitle.\(movie.id)") ?? "vi"
         player.allowsExternalPlayback = true
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
     }
@@ -40,12 +48,24 @@ final class PlayerViewModel: ObservableObject {
         load(episode, server: server)
     }
 
+    func selectAudio(_ source: EpisodeAudioSource?) {
+        selectedAudioKey = source?.key
+        defaults.set(source?.key, forKey: "cineviet.player.audio.\(movie.id)")
+        load(currentEpisode, server: currentServer)
+    }
+
+    func selectSubtitle(_ language: String) {
+        selectedSubtitleLanguage = language
+        defaults.set(language, forKey: "cineviet.player.subtitle.\(movie.id)")
+        applyEmbeddedSubtitleSelection()
+    }
+
     private func load(_ episode: EpisodeItem, server: EpisodeServer) {
         itemObservation?.invalidate()
         errorMessage = nil
         isLoading = true
 
-        guard let url = Self.directMediaURL(for: episode) else {
+        guard let url = Self.directMediaURL(for: episode, audioKey: selectedAudioKey) else {
             player.replaceCurrentItem(with: nil)
             isLoading = false
             errorMessage = episode.linkEmbed.isEmpty
@@ -62,6 +82,7 @@ final class PlayerViewModel: ObservableObject {
                 case .readyToPlay:
                     self.isLoading = false
                     self.errorMessage = nil
+                    self.applyEmbeddedSubtitleSelection()
                     self.player.play()
                 case .failed:
                     self.isLoading = false
@@ -77,6 +98,20 @@ final class PlayerViewModel: ObservableObject {
         player.replaceCurrentItem(with: item)
     }
 
+    private func applyEmbeddedSubtitleSelection() {
+        guard let item = player.currentItem,
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else { return }
+        if selectedSubtitleLanguage == "off" {
+            item.select(nil, in: group)
+            return
+        }
+        let option = group.options.first { option in
+            let language = option.extendedLanguageTag ?? option.locale?.language.languageCode?.identifier
+            return language?.lowercased().hasPrefix(selectedSubtitleLanguage.lowercased()) == true
+        }
+        item.select(option, in: group)
+    }
+
     private func configureAudioSession() {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
@@ -86,10 +121,12 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    static func directMediaURL(for episode: EpisodeItem) -> URL? {
+    static func directMediaURL(for episode: EpisodeItem, audioKey: String? = nil) -> URL? {
+        let selectedAudio = audioKey.flatMap { key in
+            episode.audioSources.first { $0.key == key }
+        }
         let originalAudio = episode.audioSources.first { $0.key.lowercased() == "original" }
-        let audioSource = originalAudio ?? episode.audioSources.first
-        let candidates = [audioSource?.url, episode.linkM3u8]
+        let candidates = [selectedAudio?.url, originalAudio?.url, episode.audioSources.first?.url, episode.linkM3u8]
         let raw = candidates.compactMap { value in
             let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return trimmed.isEmpty ? nil : trimmed
