@@ -113,12 +113,20 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func togglePlayback() {
-        if player.timeControlStatus == .playing { player.pause() } else { player.play() }
-        isPlaying = player.timeControlStatus != .playing
+        if player.rate > 0 {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.play()
+            isPlaying = true
+        }
     }
 
     func seek(to seconds: Double) {
-        player.seek(to: CMTime(seconds: max(0, seconds), preferredTimescale: 600))
+        let upperBound = playbackDuration > 1 ? playbackDuration : seconds
+        let target = min(max(0, seconds), upperBound)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        playbackPosition = target
     }
 
     func skip(_ seconds: Double) { seek(to: playbackPosition + seconds) }
@@ -140,6 +148,16 @@ final class PlayerViewModel: ObservableObject {
         load(currentEpisode, server: currentServer)
     }
 
+    func playServer(named name: String) {
+        guard let server = movie.episodes.first(where: { $0.name == name }) else { return }
+        let matching = server.items.first(where: { $0.name == currentEpisode.name && Self.directMediaURL(for: $0) != nil })
+        guard let episode = matching ?? server.items.first(where: { Self.directMediaURL(for: $0) != nil }) else {
+            errorMessage = "Máy chủ này chưa có nguồn phát trực tiếp."
+            return
+        }
+        play(episode, server: server)
+    }
+
     func selectSubtitle(_ language: String) {
         selectedSubtitleLanguage = language
         defaults.set(language, forKey: "cineviet.player.subtitle.\(movie.id)")
@@ -154,6 +172,9 @@ final class PlayerViewModel: ObservableObject {
         if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
         errorMessage = nil
         isLoading = true
+        isPlaying = false
+        playbackPosition = 0
+        playbackDuration = 1
 
         guard let url = Self.directMediaURL(for: episode, audioKey: selectedAudioKey) else {
             player.replaceCurrentItem(with: nil)
@@ -187,6 +208,7 @@ final class PlayerViewModel: ObservableObject {
             }
         }
         player.replaceCurrentItem(with: item)
+        player.play()
     }
 
     private func persistPlaybackSelection() {
