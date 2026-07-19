@@ -27,7 +27,8 @@ struct MovieCardView: View {
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(2)
-                .frame(width: 142, minHeight: 34, alignment: .topLeading)
+                .frame(width: 142, alignment: .leading)
+                .frame(minHeight: 34, alignment: .topLeading)
             HStack(spacing: 7) {
                 if let year = movie.releaseYear, year > 1800 { Text(String(year)) }
                 if let rating = movie.rating, rating > 0 {
