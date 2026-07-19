@@ -1,4 +1,24 @@
 import SwiftUI
+import UIKit
+
+/// SwiftUI disables UINavigationController's edge-pop gesture when its native
+/// back button is hidden. Re-enable the existing gesture without adding a
+/// competing recognizer or changing the navigation stack.
+private struct InteractivePopGestureRestorer: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        PopGestureController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+
+    private final class PopGestureController: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            navigationController?.interactivePopGestureRecognizer?.delegate = nil
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        }
+    }
+}
 
 private struct PlayerLaunch: Identifiable { let id = UUID(); let movie: Movie; let server: EpisodeServer; let episode: EpisodeItem }
 private enum DetailSection: String, CaseIterable, Identifiable { case episodes = "Tập phim", cast = "Diễn viên", related = "Đề xuất"; var id: Self { self } }
@@ -32,9 +52,17 @@ struct MovieDetailView: View {
                 }
             }
             .frame(width: geometry.size.width)
+            .overlay(alignment: .topLeading) {
+                backButton
+                    .padding(.leading, 16)
+                    .padding(.top, max(10, geometry.safeAreaInsets.top + 8))
+                    .zIndex(20)
+            }
         }
         .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
-        .toolbar(.hidden, for: .navigationBar).hidesFloatingNavigation().task { await viewModel.load() }
+        .toolbar(.hidden, for: .navigationBar)
+        .background(InteractivePopGestureRestorer())
+        .hidesFloatingNavigation().task { await viewModel.load() }
         .fullScreenCover(item: $playerLaunch) { launch in PlayerView(movie: launch.movie, server: launch.server, episode: launch.episode, watchHistoryService: watchHistoryService).background(Color.black.ignoresSafeArea()).interactiveDismissDisabled() }
         .sheet(isPresented: $showingRating) { RatingSheet(viewModel: viewModel) }
         .sheet(isPresented: $showingComments) { CommentsSheet(viewModel: viewModel) }
@@ -63,16 +91,34 @@ struct MovieDetailView: View {
                     .overlay { RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(.white.opacity(0.07)) }
             )
             .frame(width: width, alignment: .center)
-            .offset(y: -24)
-        }.frame(width: width, alignment: .leading).padding(.bottom, 24)
+            // Negative layout padding creates the intended hero overlap without
+            // leaving the empty space that a visual offset reserves below it.
+            .padding(.top, -24)
+        }.fixedSize(horizontal: false, vertical: true).frame(width: width, alignment: .leading).padding(.bottom, 12)
     }
 
     private func hero(_ movie: Movie) -> some View {
         ZStack(alignment: .topLeading) {
             AsyncImage(url: movie.backdropURL) { phase in if case .success(let image) = phase { image.resizable().scaledToFill() } else { CineVietTheme.panel } }.frame(maxWidth: .infinity).frame(height: 320).clipped()
             LinearGradient(colors: [.black.opacity(0.2), .clear, CineVietTheme.background], startPoint: .top, endPoint: .bottom)
-            Button { dismiss() } label: { Image(systemName: "chevron.left").font(.headline.bold()).frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle()).overlay { Circle().stroke(.white.opacity(0.25)) } }.accessibilityLabel("Quay lại").padding(.leading, 16).padding(.top, 10)
         }
+    }
+
+    private var backButton: some View {
+        Button { dismiss() } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(.black.opacity(0.58), in: Circle())
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay { Circle().stroke(.white.opacity(0.38), lineWidth: 1) }
+                .shadow(color: .black.opacity(0.45), radius: 10, y: 4)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Quay lại")
+        .accessibilityHint("Trở về màn hình trước")
     }
 
     private func primaryActions(_ movie: Movie, _ proxy: ScrollViewProxy) -> some View {
