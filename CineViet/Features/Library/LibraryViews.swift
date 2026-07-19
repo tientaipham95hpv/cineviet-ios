@@ -40,7 +40,7 @@ struct PlaylistsView: View {
     let service: LibraryServicing; let initial: CinePlaylist
     init(playlist: CinePlaylist, service: LibraryServicing) { initial = playlist; self.service = service }
     func load() async { isLoading = true; defer { isLoading = false }; do { detail = try await service.playlistDetail(detail?.playlist ?? initial); errorMessage = nil } catch { errorMessage = error.localizedDescription } }
-    func toggleVisibility() async { guard let detail else { return }; do { let updated = try await service.updatePlaylist(detail.playlist.id, isPublic: !detail.playlist.isPublic); self.detail = PlaylistDetail(playlist: updated, movies: detail.movies) } catch { errorMessage = error.localizedDescription } }
+    func toggleVisibility() async { guard let detail else { return }; do { let updated = try await service.updatePlaylist(detail.playlist.id, name: nil, description: nil, isPublic: !detail.playlist.isPublic); self.detail = PlaylistDetail(playlist: updated, movies: detail.movies) } catch { errorMessage = error.localizedDescription } }
     func remove(_ movie: Movie) async { guard let detail else { return }; do { try await service.remove(movieID: movie.id, from: detail.playlist.id); self.detail = PlaylistDetail(playlist: detail.playlist, movies: detail.movies.filter { $0.id != movie.id }) } catch { errorMessage = error.localizedDescription } }
     func delete() async { do { try await service.deletePlaylist((detail?.playlist ?? initial).id); isDeleted = true } catch { errorMessage = error.localizedDescription } }
 }

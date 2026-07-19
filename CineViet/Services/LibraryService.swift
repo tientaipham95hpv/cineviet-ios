@@ -27,7 +27,7 @@ protocol LibraryServicing {
     func createPlaylist(name: String, description: String, isPublic: Bool) async throws -> CinePlaylist
     func add(movieID: Int, to playlistID: Int) async throws
     func playlistDetail(_ playlist: CinePlaylist) async throws -> PlaylistDetail
-    func updatePlaylist(_ playlistID: Int, name: String? = nil, description: String? = nil, isPublic: Bool? = nil) async throws -> CinePlaylist
+    func updatePlaylist(_ playlistID: Int, name: String?, description: String?, isPublic: Bool?) async throws -> CinePlaylist
     func remove(movieID: Int, from playlistID: Int) async throws
     func deletePlaylist(_ playlistID: Int) async throws
 }
