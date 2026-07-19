@@ -94,7 +94,8 @@ final class PlayerViewModel: ObservableObject {
             ?? restoredServer.items.first(where: { Self.sameEpisode($0, episode) }) ?? episode
         selectedAudioKey = defaults.string(forKey: "cineviet.player.audio.\(movie.id)")
         selectedSubtitleLanguage = defaults.string(forKey: "cineviet.player.subtitle.\(movie.id)") ?? "vi"
-        if let data = defaults.data(forKey: subtitleStylePreferenceKey), let saved = try? JSONDecoder().decode([String: SubtitleStyle].self, from: data) { subtitleStyles = ["vi": saved["vi"] ?? .vietnamese, "en": saved["en"] ?? .english] }
+        let subtitleStyleKey = "cineviet.player.subtitle.style.\(movie.id)"
+        if let data = defaults.data(forKey: subtitleStyleKey), let saved = try? JSONDecoder().decode([String: SubtitleStyle].self, from: data) { subtitleStyles = ["vi": saved["vi"] ?? .vietnamese, "en": saved["en"] ?? .english] }
         isAutoPlayEnabled = defaults.object(forKey: "cineviet.player.autoplay") as? Bool ?? true
         player.allowsExternalPlayback = true
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
