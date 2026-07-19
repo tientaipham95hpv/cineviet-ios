@@ -12,6 +12,18 @@ struct CinePlaylist: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, name, slug, description, cover, movieCount = "movie_count", isPublic = "is_public"
     }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        slug = try values.decodeIfPresent(String.self, forKey: .slug) ?? ""
+        description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
+        cover = try values.decodeIfPresent(String.self, forKey: .cover) ?? ""
+        movieCount = try values.decodeIfPresent(Int.self, forKey: .movieCount) ?? 0
+        isPublic = (try? values.decode(Bool.self, forKey: .isPublic))
+            ?? ((try? values.decode(Int.self, forKey: .isPublic)) == 1)
+    }
 }
 
 struct PlaylistDetail: Equatable {
@@ -112,7 +124,8 @@ struct LibraryService: LibraryServicing {
 
     func rate(movieID: Int, rating: Int) async throws -> RatingStats {
         let request = try APIRequest.json(method: .post, path: "/movies/\(movieID)/rate", body: RatingPayload(rating: rating), requiresAuthentication: true)
-        return try await apiClient.send(request)
+        let _: RatingSubmissionResponse = try await apiClient.send(request)
+        return try await ratingStats(movieID: movieID)
     }
 }
 

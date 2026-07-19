@@ -76,9 +76,13 @@ final class MovieDetailViewModel: ObservableObject {
     }
 
     func createPlaylist(name: String) async {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty, !isSubmitting else { return }
+        isSubmitting = true; defer { isSubmitting = false }
         do {
-            let playlist = try await libraryService.createPlaylist(name: name, description: "", isPublic: false)
-            playlists.append(playlist); try await libraryService.add(movieID: displayedMovie.id, to: playlist.id)
+            let playlist = try await libraryService.createPlaylist(name: cleanName, description: "", isPublic: false)
+            try await libraryService.add(movieID: displayedMovie.id, to: playlist.id)
+            playlists.append(playlist)
             message = "Đã tạo playlist và thêm phim"
         } catch { message = error.localizedDescription }
     }

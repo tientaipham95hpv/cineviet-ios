@@ -86,7 +86,7 @@ struct MovieDetailView: View {
 
     private func action(_ icon: String, _ text: String, busy: Bool = false, perform: @escaping () -> Void) -> some View { Button(action: perform) { if busy { ProgressView().tint(.white).frame(width: 78).frame(minHeight: 64) } else { actionLabel(icon, text) } }.buttonStyle(DetailActionStyle()).disabled(busy).accessibilityLabel(text) }
     private func actionLabel(_ icon: String, _ text: String) -> some View { VStack(spacing: 7) { Image(systemName: icon).font(.title3).frame(height: 25); Text(text).font(.caption2).lineLimit(1) }.frame(width: 78).frame(minHeight: 64).contentShape(Rectangle()) }
-    private func canonicalURL(_ movie: Movie) -> URL { URL(string: "https://cineviet.live/phim/\(movie.routeKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? movie.routeKey)")! }
+    private func canonicalURL(_ movie: Movie) -> URL { AppEnvironment.siteBaseURL.appendingPathComponent("movie").appendingPathComponent(movie.routeKey) }
 
     @ViewBuilder private func tabs(_ movie: Movie) -> some View {
         let available = DetailSection.allCases.filter { $0 == .episodes ? !movie.episodes.isEmpty : ($0 == .cast ? (!movie.cast.isEmpty || !movie.directors.isEmpty) : !movie.related.isEmpty) }
@@ -105,6 +105,7 @@ struct MovieDetailView: View {
 
 private struct DetailCTAStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let primary: Bool
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -114,12 +115,13 @@ private struct DetailCTAStyle: ButtonStyle {
             .overlay { RoundedRectangle(cornerRadius: 15).stroke(primary ? CineVietTheme.accent : .white.opacity(0.25)) }
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
 private struct DetailActionStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
@@ -127,16 +129,17 @@ private struct DetailActionStyle: ButtonStyle {
             .overlay { RoundedRectangle(cornerRadius: 14).stroke(CineVietTheme.border) }
             .scaleEffect(configuration.isPressed ? 0.95 : 1)
             .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.5)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
 private struct EpisodeButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.72 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
