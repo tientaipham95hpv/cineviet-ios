@@ -84,12 +84,23 @@ struct WatchHistoryService: WatchHistoryServicing {
             movieId: movie.id, episode: Self.episodeNumber(episode.name), progress: Int((ratio * 100).rounded()),
             completed: ratio >= 0.95 ? 1 : 0, positionSeconds: position, durationSeconds: duration,
             serverIndex: serverIndex, episodeName: episode.name, serverName: server.name,
-            streamURL: PlayerViewModel.directMediaURL(for: episode)?.absoluteString ?? episode.playUrl
+            streamURL: Self.mediaURL(for: episode)?.absoluteString ?? episode.playUrl
         )
         guard let watch = try? APIRequest.json(method: .post, path: "/movies/\(movie.id)/watch", body: payload, requiresAuthentication: true),
               let history = try? APIRequest.json(method: .post, path: "/history", body: payload, requiresAuthentication: true) else { return }
         try? await apiClient.send(watch)
         try? await apiClient.send(history)
+    }
+
+    private static func mediaURL(for episode: EpisodeItem) -> URL? {
+        let source = episode.audioSources.first { $0.key.lowercased() == "original" } ?? episode.audioSources.first
+        let raw = [source?.url, episode.linkM3u8].compactMap { value in
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? nil : trimmed
+        }.first ?? ""
+        if raw.hasPrefix("//") { return URL(string: "https:\(raw)") }
+        if let url = URL(string: raw), url.scheme == "http" || url.scheme == "https" { return url }
+        return URL(string: raw, relativeTo: AppEnvironment.siteBaseURL)?.absoluteURL
     }
 
     private static func episodeNumber(_ name: String) -> Int {
