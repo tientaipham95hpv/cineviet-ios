@@ -66,8 +66,14 @@ struct MovieDetailView: View {
 
     private func actionPanel(_ movie: Movie) -> some View {
         VStack(spacing: 12) {
-            if let server = viewModel.selectedServer, let episode = server.items.first(where: { PlayerViewModel.directMediaURL(for: $0) != nil }) {
-                NavigationLink { PlayerView(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService) } label: { Label("Phát ngay", systemImage: "play.fill").frame(maxWidth: .infinity).padding(.vertical, 4) }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent)
+            if let source = viewModel.firstPlayableSource {
+                NavigationLink { PlayerView(movie: movie, server: source.server, episode: source.episode, watchHistoryService: watchHistoryService) } label: {
+                    Label("XEM PHIM", systemImage: "play.fill").font(.headline.bold()).frame(maxWidth: .infinity).padding(.vertical, 8)
+                }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black)
+            } else {
+                Label(viewModel.hasEmbedOnlySource ? "Nguồn phim hiện chỉ hỗ trợ trình phát nhúng" : "Phim chưa có nguồn phát", systemImage: "play.slash.fill")
+                    .font(.subheadline.bold()).foregroundStyle(CineVietTheme.textMuted).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .cineGlass(cornerRadius: 14, tint: CineVietTheme.brandRed)
             }
             HStack {
                 Button { Task { await viewModel.toggleFavorite() } } label: { Label(viewModel.isFavorite ? "Đã yêu thích" : "Yêu thích", systemImage: viewModel.isFavorite ? "heart.fill" : "heart") }.buttonStyle(.bordered)

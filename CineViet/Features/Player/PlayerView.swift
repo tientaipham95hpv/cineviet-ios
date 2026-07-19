@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PlayerView: View {
     @StateObject private var viewModel: PlayerViewModel
+    @State private var isFullScreen = false
     let servers: [EpisodeServer]
 
     init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing) {
@@ -52,6 +53,10 @@ struct PlayerView: View {
                     .cineGlass(cornerRadius: 18, tint: CineVietTheme.accent)
                     .padding()
                 }
+                VStack {
+                    HStack { Spacer(); Button { isFullScreen = true } label: { Image(systemName: "arrow.up.left.and.arrow.down.right").font(.headline).padding(11).cineGlass(cornerRadius: 14) }.accessibilityLabel("Toàn màn hình") }
+                    Spacer()
+                }.padding(10)
             }
             .frame(maxWidth: .infinity)
             .aspectRatio(16 / 9, contentMode: .fit)
@@ -129,6 +134,9 @@ struct PlayerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
+        .fullScreenCover(isPresented: $isFullScreen) {
+            FullScreenPlayer(player: viewModel.player, dismiss: { isFullScreen = false })
+        }
     }
 
     private func selectionRow(_ title: String, selected: Bool) -> some View {
@@ -137,5 +145,19 @@ struct PlayerView: View {
             Spacer()
             if selected { Image(systemName: "checkmark").foregroundStyle(CineVietTheme.accent) }
         }
+    }
+}
+
+private struct FullScreenPlayer: View {
+    let player: AVPlayer
+    let dismiss: () -> Void
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            NativePlayerView(player: player).ignoresSafeArea()
+            Button(action: dismiss) { Image(systemName: "xmark").font(.headline).padding(12).cineGlass(cornerRadius: 16) }
+                .padding()
+        }
+        .onAppear { player.play() }
     }
 }

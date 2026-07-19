@@ -40,11 +40,26 @@ final class MovieDetailViewModel: ObservableObject {
         return servers[selectedServerIndex]
     }
 
+    var firstPlayableSource: (server: EpisodeServer, episode: EpisodeItem)? {
+        for server in displayedMovie.episodes {
+            if let episode = server.items.first(where: { PlayerViewModel.directMediaURL(for: $0) != nil }) {
+                return (server, episode)
+            }
+        }
+        return nil
+    }
+
+    var hasEmbedOnlySource: Bool {
+        displayedMovie.episodes.flatMap(\.items).contains { !$0.linkEmbed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
     func load() async {
         state = .loading
         do {
             let movie = try await movieService.detail(idOrSlug: routeKey)
-            selectedServerIndex = 0
+            selectedServerIndex = movie.episodes.firstIndex(where: { server in
+                server.items.contains { PlayerViewModel.directMediaURL(for: $0) != nil }
+            }) ?? 0
             state = .loaded(movie)
             async let ids = libraryService.favoriteIDs()
             async let lists = try? libraryService.playlists()
