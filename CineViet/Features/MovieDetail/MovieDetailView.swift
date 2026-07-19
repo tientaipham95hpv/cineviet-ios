@@ -69,7 +69,9 @@ struct MovieDetailView: View {
         .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar)
         .background(InteractivePopGestureRestorer())
-        .hidesFloatingNavigation().task { await viewModel.load() }
+        // Movie Detail keeps the floating tab bar visible. It is an overlay in
+        // MainTabView, so it must not reserve or remove layout space here.
+        .task { await viewModel.load() }
         .fullScreenCover(item: $playerLaunch) { launch in PlayerView(movie: launch.movie, server: launch.server, episode: launch.episode, watchHistoryService: watchHistoryService).background(Color.black.ignoresSafeArea()).interactiveDismissDisabled() }
         .sheet(isPresented: $showingRating) { RatingSheet(viewModel: viewModel) }
         .sheet(isPresented: $showingComments) { CommentsSheet(viewModel: viewModel) }
@@ -103,9 +105,10 @@ struct MovieDetailView: View {
             .padding(.top, -24)
         }
         .frame(width: width, alignment: .leading)
-        // The detail screen covers the TabView's inherited bottom inset. Keep
-        // only a small content cushion rather than a tab-bar-sized blank band.
-        .padding(.bottom, 8)
+        // The floating tab bar remains visible as an overlay. This is scroll
+        // clearance only, allowing the final control to move above the bar and
+        // home indicator without creating a fixed blank band in the viewport.
+        .padding(.bottom, 92)
     }
 
     private var systemTopSafeAreaInset: CGFloat {
