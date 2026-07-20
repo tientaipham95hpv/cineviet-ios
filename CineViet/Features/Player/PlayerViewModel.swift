@@ -274,7 +274,22 @@ final class PlayerViewModel: ObservableObject {
         }
         activeSourceLabel = candidate.label
         isLoading = true
-        let item = AVPlayerItem(url: candidate.url)
+        let item: AVPlayerItem
+        if candidate.url.isFileURL {
+            item = AVPlayerItem(url: candidate.url)
+        } else {
+            // CineViet playback endpoints require a trusted browser/app
+            // provenance header. AVURLAsset propagates these headers to HLS
+            // playlist, redirect, key and segment requests, unlike the plain
+            // AVPlayerItem(url:) initializer.
+            let headers = [
+                "Origin": AppEnvironment.siteBaseURL.absoluteString,
+                "Referer": AppEnvironment.siteBaseURL.appendingPathComponent("").absoluteString,
+                "User-Agent": AppEnvironment.userAgent
+            ]
+            let asset = AVURLAsset(url: candidate.url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+            item = AVPlayerItem(asset: asset)
+        }
         observe(item: item, candidate: candidate)
         player.replaceCurrentItem(with: item)
         player.play()
