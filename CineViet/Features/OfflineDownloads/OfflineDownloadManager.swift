@@ -134,7 +134,8 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     private func ensureLoaded() async { if !loaded { await load() } }
     private func allTasks() async -> [URLSessionTask] { await withCheckedContinuation { continuation in session.getAllTasks { continuation.resume(returning: $0) } } }
     private func start(_ id: String) async throws {
-        guard let item = items.first(where: { $0.id == id }), let url = URL(string: item.sourceURL) else { throw OfflineError.unsupported }
+        guard let item = items.first(where: { $0.id == id }), let sourceURL = URL(string: item.sourceURL) else { throw OfflineError.unsupported }
+        let url = offlineAssetURL(for: sourceURL)
         try await validateDownloadSource(url)
         // Match Player transport: CineViet's HLS gateway rejects playlist, key and
         // segment requests without trusted app provenance. AVURLAsset propagates
@@ -147,6 +148,14 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         guard let task = session.makeAssetDownloadTask(asset: asset, assetTitle: "\(item.movieTitle) – \(item.episodeName)", assetArtworkData: nil, options: [AVAssetDownloadTaskMinimumRequiredMediaBitrateKey: 0]) else { throw OfflineError.cannotCreate }
         task.taskDescription = id; update(id) { $0.state = .downloading; $0.error = ""; $0.progress = 0; $0.taskIdentifier = task.taskIdentifier }; task.resume()
+    }
+    private func offlineAssetURL(for sourceURL: URL) -> URL {
+        guard sourceURL.host?.lowercased() != AppEnvironment.apiBaseURL.host?.lowercased(),
+              var components = URLComponents(url: AppEnvironment.apiBaseURL.appendingPathComponent("stream"), resolvingAgainstBaseURL: false) else {
+            return sourceURL
+        }
+        components.queryItems = [URLQueryItem(name: "url", value: sourceURL.absoluteString)]
+        return components.url ?? sourceURL
     }
     private func validateDownloadSource(_ url: URL) async throws {
         var request = URLRequest(url: url)
