@@ -40,7 +40,6 @@ struct MainTabView: View {
             setFloatingNavigationHidden(false)
         }
         .tint(CineVietTheme.accent)
-        .preferredColorScheme(.dark)
     }
 
     private func setFloatingNavigationHidden(_ hidden: Bool, animated: Bool = true) {
@@ -63,16 +62,16 @@ struct MainTabView: View {
             .padding(7)
             .background(.ultraThinMaterial, in: Capsule())
             .background(Capsule().fill(CineVietTheme.panel.opacity(0.82)))
-            .overlay { Capsule().stroke(.white.opacity(0.34), lineWidth: 1) }
+            .overlay { Capsule().stroke(CineVietTheme.border.opacity(0.8), lineWidth: 1) }
             .shadow(color: .black.opacity(0.46), radius: 22, y: 10)
 
             Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) { selectedTab = 4 } } label: {
                 Image(systemName: selectedTab == 4 ? "heart.fill" : "heart")
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(selectedTab == 4 ? .black : .white)
+                    .foregroundStyle(selectedTab == 4 ? .black : .primary)
                     .frame(width: 54, height: 54)
                     .background(selectedTab == 4 ? CineVietTheme.accent : CineVietTheme.panel.opacity(0.88), in: Circle())
-                    .overlay { Circle().stroke(selectedTab == 4 ? CineVietTheme.accent.opacity(0.85) : .white.opacity(0.38), lineWidth: 1.5) }
+                    .overlay { Circle().stroke(selectedTab == 4 ? CineVietTheme.accent.opacity(0.85) : CineVietTheme.border, lineWidth: 1.5) }
                     .shadow(color: (selectedTab == 4 ? CineVietTheme.accent : .black).opacity(0.4), radius: 16, y: 7)
             }
             .accessibilityLabel("Yêu thích")

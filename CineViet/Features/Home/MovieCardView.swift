@@ -19,13 +19,13 @@ struct MovieCardView: View {
             }
             .frame(width: 142, height: 205)
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 0.8) }
+            .overlay { RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(CineVietTheme.border.opacity(0.75), lineWidth: 0.8) }
             .overlay(alignment: .topTrailing) { qualityBadge }
             .shadow(color: .black.opacity(0.34), radius: 12, y: 7)
 
             Text(movie.title)
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .lineLimit(2)
                 .frame(width: 142, alignment: .leading)
                 .frame(minHeight: 34, alignment: .topLeading)

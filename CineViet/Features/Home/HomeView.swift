@@ -93,7 +93,7 @@ struct HomeView: View {
                 Button(role: .destructive, action: logout) { Label("Đăng xuất", systemImage: "rectangle.portrait.and.arrow.right") }
             } label: {
                 Image(systemName: "person.crop.circle").font(.system(size: 20, weight: .semibold)).frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle()).overlay { Circle().stroke(.white.opacity(0.13)) }
+                    .background(.ultraThinMaterial, in: Circle()).overlay { Circle().stroke(CineVietTheme.border.opacity(0.7)) }
             }
             .accessibilityLabel("Tài khoản")
         }
@@ -144,12 +144,12 @@ struct HomeView: View {
             .clipped()
             LinearGradient(
                 colors: compact
-                    ? [.black.opacity(0.02), .black.opacity(0.18), CineVietTheme.background.opacity(0.98)]
-                    : [.black.opacity(0.08), .black.opacity(0.22), CineVietTheme.background.opacity(0.94)],
+                    ? [.clear, .black.opacity(0.10), .black.opacity(0.82)]
+                    : [.clear, .black.opacity(0.13), .black.opacity(0.76)],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            LinearGradient(colors: [.black.opacity(compact ? 0.3 : 0.82), .clear], startPoint: .leading, endPoint: .trailing)
+            LinearGradient(colors: [.black.opacity(compact ? 0.18 : 0.58), .clear], startPoint: .leading, endPoint: .trailing)
             VStack(alignment: .leading, spacing: compact ? 10 : 12) {
                 Label("PHIM NỔI BẬT", systemImage: "flame.fill")
                     .font(.system(size: 11, weight: .black, design: .rounded)).tracking(1.1).foregroundStyle(CineVietTheme.accent)
@@ -172,11 +172,12 @@ struct HomeView: View {
             }
             .frame(maxWidth: compact ? .infinity : min(520, width * 0.58), alignment: .leading)
             .padding(compact ? 18 : 24)
+            .foregroundStyle(.white)
         }
         .frame(width: max(0, width - 24), height: height)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.12)) }
-        .shadow(color: .black.opacity(0.42), radius: 24, y: 14)
+        .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.18)) }
+        .shadow(color: .black.opacity(0.28), radius: 20, y: 11)
         .padding(.horizontal, 12)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Phim nổi bật: \(movie.title)")
@@ -224,9 +225,9 @@ struct HomeView: View {
 
     private func categoryChip(_ title: String, icon: String, preset: CatalogPreset) -> some View {
         Button { catalogPreset = preset } label: {
-            Label(title, systemImage: icon).font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(.white.opacity(0.9))
+            Label(title, systemImage: icon).font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(.primary)
                 .padding(.horizontal, 14).frame(minHeight: 44).background(CineVietTheme.panel.opacity(0.92), in: Capsule())
-                .overlay { Capsule().stroke(.white.opacity(0.1)) }
+                .overlay { Capsule().stroke(CineVietTheme.border.opacity(0.7)) }
         }.buttonStyle(.plain)
     }
 
@@ -340,7 +341,7 @@ private struct ContinueWatchingCard: View {
             Text("Đã xem \(Int((item.progress * 100).rounded()))%")
                 .font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(CineVietTheme.textMuted)
         }
-        .foregroundStyle(.white).accessibilityElement(children: .combine)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("Xem tiếp \(item.movie.title), đã xem \(Int((item.progress * 100).rounded())) phần trăm")
     }
 }
@@ -378,7 +379,7 @@ private struct HomeFailureView: View {
             Text("Không tải được trang chủ").font(.title2.bold())
             Text(message).font(.subheadline).foregroundStyle(CineVietTheme.textMuted).multilineTextAlignment(.center)
             Button(action: retry) { Label("Thử lại", systemImage: "arrow.clockwise").frame(minWidth: 140, minHeight: 48) }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black)
-        }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(.white).background(CineVietTheme.background.ignoresSafeArea())
+        }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(CineVietTheme.background.ignoresSafeArea())
     }
 }
 
@@ -389,6 +390,6 @@ private struct HomeEmptyView: View {
             Image(systemName: "film.stack").font(.system(size: 44)).foregroundStyle(CineVietTheme.accent)
             Text("Chưa có phim để hiển thị").font(.title3.bold())
             Button("Tải lại", action: retry).frame(minHeight: 44).foregroundStyle(CineVietTheme.accent)
-        }.frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(.white).background(CineVietTheme.background.ignoresSafeArea())
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(CineVietTheme.background.ignoresSafeArea())
     }
 }

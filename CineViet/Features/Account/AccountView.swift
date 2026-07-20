@@ -26,6 +26,7 @@ final class AccountViewModel: ObservableObject {
 }
 
 struct AccountView: View {
+    @EnvironmentObject private var settings: AppSettings
     let user: User
     let updateUser: (User) -> Void
     let logout: () -> Void
@@ -63,6 +64,13 @@ struct AccountView: View {
                     NavigationLink("Đổi mật khẩu") { ChangePasswordView(model: model) }.frame(minHeight: 44)
                 }
                 Section("Ứng dụng") {
+                    Picker("Giao diện", selection: $settings.appearance) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(appearance.title).tag(appearance)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                    .accessibilityHint("Chọn giao diện theo hệ thống, sáng hoặc tối")
                     LabeledContent("Phiên bản", value: appBuildLabel)
                         .textSelection(.enabled)
                         .accessibilityHint("Dùng mã này để xác minh bản ứng dụng đang cài")

@@ -10,7 +10,7 @@ struct CineVietApp: App {
             SessionRootView(container: container)
                 .environmentObject(container)
                 .environmentObject(container.settings)
-                .preferredColorScheme(container.settings.isDarkMode ? .dark : .light)
+                .preferredColorScheme(container.settings.appearance.colorScheme)
         }
     }
 }
