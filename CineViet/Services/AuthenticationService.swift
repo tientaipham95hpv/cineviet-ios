@@ -9,7 +9,7 @@ protocol AuthenticationServicing {
     func changePassword(current: String, new: String) async throws
     func membershipSummary() async throws -> MembershipSummary
     func requireOfflineDownloadAccess() async throws
-    func logout() throws
+    func logout() async throws
 }
 
 final class AuthenticationService: AuthenticationServicing {
@@ -91,7 +91,16 @@ final class AuthenticationService: AuthenticationServicing {
         guard identity.isVip || identity.isAdmin else { throw OfflineAccessError.vipRequired }
     }
 
-    func logout() throws {
+    func logout() async throws {
+        let refreshToken = try? tokenStore.load()?.refreshToken
+        if let refreshToken, !refreshToken.isEmpty {
+            let body = RefreshTokenRequest(refreshToken: refreshToken)
+            if let request = try? APIRequest.json(method: .post, path: "/auth/logout", body: body) {
+                // Server revocation is best effort. Local credentials must always
+                // be removed so logout also works without connectivity.
+                try? await apiClient.send(request)
+            }
+        }
         try tokenStore.clear()
         defaults.removeObject(forKey: Self.cachedUserKey)
     }

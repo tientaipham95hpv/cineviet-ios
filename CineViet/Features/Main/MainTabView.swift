@@ -7,6 +7,7 @@ struct MainTabView: View {
     let watchHistoryService: WatchHistoryServicing
     let libraryService: LibraryServicing
     let authenticationService: AuthenticationServicing
+    let notificationService: NotificationServicing
     let watchTogetherService: WatchTogetherService
     let updateUser: (User) -> Void
     let logout: () -> Void
@@ -20,7 +21,7 @@ struct MainTabView: View {
             ShortDramaView(movieService: movieService).tag(2)
             WatchTogetherView(service: watchTogetherService, watchHistoryService: watchHistoryService).tag(3)
             LibraryView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(4)
-            AccountView(user: user, service: authenticationService, watchHistoryService: watchHistoryService, updateUser: updateUser, logout: logout).tag(5)
+            AccountView(user: user, service: authenticationService, notificationService: notificationService, watchHistoryService: watchHistoryService, updateUser: updateUser, logout: logout).tag(5)
         }
         .toolbar(.hidden, for: .tabBar)
         // The floating bar is visual chrome, not layout content. Using a

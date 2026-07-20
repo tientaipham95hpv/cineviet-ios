@@ -50,7 +50,7 @@ final class AuthenticationViewModel: ObservableObject {
                 let user = try await authenticationService.currentUser()
                 sessionState = .signedIn(user)
             } catch {
-                try? authenticationService.logout()
+                try? await authenticationService.logout()
                 sessionState = .signedOut
             }
         }
@@ -101,14 +101,16 @@ final class AuthenticationViewModel: ObservableObject {
     }
 
     func logout() {
-        do {
-            try authenticationService.logout()
-            email = ""
-            password = ""
-            errorMessage = nil
-            sessionState = .signedOut
-        } catch {
-            errorMessage = userFacingMessage(for: error)
+        Task {
+            do {
+                try await authenticationService.logout()
+                email = ""
+                password = ""
+                errorMessage = nil
+                sessionState = .signedOut
+            } catch {
+                errorMessage = userFacingMessage(for: error)
+            }
         }
     }
 

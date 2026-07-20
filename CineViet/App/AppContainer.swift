@@ -6,6 +6,7 @@ final class AppContainer: ObservableObject {
     let settings: AppSettings
     let apiClient: APIClient
     let authenticationService: AuthenticationServicing
+    let notificationService: NotificationServicing
     let movieService: MovieServicing
     let watchHistoryService: WatchHistoryServicing
     let libraryService: LibraryServicing
@@ -16,6 +17,7 @@ final class AppContainer: ObservableObject {
         settings: AppSettings,
         apiClient: APIClient,
         authenticationService: AuthenticationServicing,
+        notificationService: NotificationServicing,
         movieService: MovieServicing,
         watchHistoryService: WatchHistoryServicing,
         libraryService: LibraryServicing,
@@ -25,6 +27,7 @@ final class AppContainer: ObservableObject {
         self.settings = settings
         self.apiClient = apiClient
         self.authenticationService = authenticationService
+        self.notificationService = notificationService
         self.movieService = movieService
         self.watchHistoryService = watchHistoryService
         self.libraryService = libraryService
@@ -40,6 +43,7 @@ final class AppContainer: ObservableObject {
             settings: settings,
             apiClient: apiClient,
             authenticationService: AuthenticationService(apiClient: apiClient, tokenStore: tokenStore),
+            notificationService: NotificationService(apiClient: apiClient),
             movieService: MovieService(apiClient: apiClient),
             watchHistoryService: WatchHistoryService(apiClient: apiClient),
             libraryService: LibraryService(apiClient: apiClient),
