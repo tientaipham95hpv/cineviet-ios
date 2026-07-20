@@ -147,6 +147,7 @@ struct ShortDramaViewer: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: ShortDramaViewerModel
     @State private var page = 0
+    @GestureState private var verticalDrag: CGFloat = 0
 
     init(movie: Movie, movieService: MovieServicing) {
         _viewModel = StateObject(wrappedValue: ShortDramaViewerModel(movie: movie, service: movieService))
@@ -174,21 +175,50 @@ struct ShortDramaViewer: View {
 
     private var verticalPages: some View {
         GeometryReader { geometry in
-            TabView(selection: $page) {
+            ZStack {
                 ForEach(Array(viewModel.episodes.enumerated()), id: \.element.id) { index, episode in
-                    ShortEpisodeView(movie: viewModel.movie!, episode: episode, index: index, total: viewModel.episodes.count, isActive: page == index, dismiss: { dismiss() })
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .rotationEffect(.degrees(90))
-                        .tag(index)
+                    // Keep only the current page and its neighbours in the
+                    // render tree. Controllers outside this window never own
+                    // an AVPlayer, even when a title has up to 100 episodes.
+                    if abs(index - page) <= 1 {
+                        ShortEpisodeView(movie: viewModel.movie!, episode: episode, index: index, total: viewModel.episodes.count, isActive: page == index, dismiss: { dismiss() })
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .offset(y: CGFloat(index - page) * geometry.size.height + verticalDrag)
+                    }
                 }
             }
-            .frame(width: geometry.size.height, height: geometry.size.width)
-            .rotationEffect(.degrees(-90), anchor: .topLeading)
-            .offset(x: 0, y: geometry.size.height)
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+            .contentShape(Rectangle())
+            .simultaneousGesture(verticalPagingGesture(pageHeight: geometry.size.height))
         }
         .ignoresSafeArea()
         .accessibilityHint("Vuốt lên hoặc xuống để đổi tập")
+        .accessibilityAction(named: "Tập tiếp theo") { movePage(by: 1) }
+        .accessibilityAction(named: "Tập trước") { movePage(by: -1) }
+    }
+
+    private func verticalPagingGesture(pageHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 18, coordinateSpace: .local)
+            .updating($verticalDrag) { value, state, _ in
+                guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                let atFirst = page == 0 && value.translation.height > 0
+                let atLast = page == viewModel.episodes.count - 1 && value.translation.height < 0
+                state = (atFirst || atLast) ? value.translation.height * 0.18 : value.translation.height
+            }
+            .onEnded { value in
+                guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                let projected = value.predictedEndTranslation.height
+                let threshold = min(max(pageHeight * 0.16, 72), 150)
+                if projected < -threshold { movePage(by: 1) }
+                else if projected > threshold { movePage(by: -1) }
+            }
+    }
+
+    private func movePage(by delta: Int) {
+        let target = min(max(0, page + delta), viewModel.episodes.count - 1)
+        guard target != page else { return }
+        withAnimation(.interactiveSpring(response: 0.32, dampingFraction: 0.88)) { page = target }
     }
 
     private func errorView(_ message: String) -> some View {
@@ -250,12 +280,14 @@ private struct ShortEpisodeView: View {
                     if case let .success(image) = phase { image.resizable().scaledToFill() }
                     else { Color.black }
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
+                // Slight overscan prevents a one-pixel seam caused by UIKit ↔
+                // SwiftUI rounding on some device scales and safe-area widths.
+                .frame(width: proxy.size.width + 4, height: proxy.size.height + 4)
                 .clipped()
 
                 if let player = controller.player {
                     ShortCoverPlayerView(player: player)
-                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .frame(width: proxy.size.width + 4, height: proxy.size.height + 4)
                         .clipped()
                         .accessibilityHidden(true)
                 }
