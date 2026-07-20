@@ -170,13 +170,88 @@ private struct HistoryRow: View {
 }
 
 struct PlaylistDetailView: View {
-    @Environment(\.dismiss) private var dismiss; @StateObject private var viewModel: PlaylistDetailViewModel
-    @State private var confirmDelete = false; @State private var showingEditor = false; @State private var selectedMovie: Movie?
-    let movieService: MovieServicing; let watchHistoryService: WatchHistoryServicing; let libraryService: LibraryServicing
-    init(playlist: CinePlaylist, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing) { self.movieService = movieService; self.watchHistoryService = watchHistoryService; self.libraryService = libraryService; _viewModel = StateObject(wrappedValue: PlaylistDetailViewModel(playlist: playlist, service: libraryService)) }
-    var body: some View { Group { if viewModel.isLoading && viewModel.detail == nil { ProgressView("Đang tải playlist…") } else if let detail = viewModel.detail { ScrollView { LazyVStack(spacing: 18) { VStack(alignment: .leading, spacing: 10) { HStack { Label(detail.playlist.isPublic ? "Công khai" : "Riêng tư", systemImage: detail.playlist.isPublic ? "globe" : "lock.fill"); Spacer(); Button("Chỉnh sửa") { showingEditor = true } }; if !detail.playlist.description.isEmpty { Text(detail.playlist.description).foregroundStyle(CineVietTheme.textMuted) } }.padding(16).cineGlass(cornerRadius: 20, tint: CineVietTheme.accent).padding(.horizontal); if detail.movies.isEmpty { ContentMessage(icon: "rectangle.stack", title: "Playlist chưa có phim", message: "Thêm phim từ trang chi tiết.").frame(minHeight: 280) } else { ForEach(detail.movies) { movie in HStack { Button { selectedMovie = movie } label: { MovieCardView(movie: movie) }.buttonStyle(.plain); Spacer(); Button(role: .destructive) { Task { await viewModel.remove(movie) } } label: { Label("Gỡ", systemImage: "minus.circle.fill") }.frame(minWidth: 60) }.padding(.horizontal) }; Button("Xoá playlist", role: .destructive) { confirmDelete = true }.buttonStyle(.bordered).padding(.bottom, 30) } } } else if let error = viewModel.errorMessage { ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được playlist", message: error) } }.background(CineVietTheme.background.ignoresSafeArea()).navigationTitle(viewModel.detail?.playlist.name ?? viewModel.initial.name).hidesFloatingNavigation().task { await viewModel.load() }.onChange(of: viewModel.isDeleted) { if $0 { dismiss() } }.sheet(isPresented: $showingEditor) { let item = viewModel.detail?.playlist ?? viewModel.initial; PlaylistEditorSheet(title: "Chỉnh sửa playlist", name: item.name, description: item.description, isPublic: item.isPublic, save: viewModel.update) }.confirmationDialog("Xoá playlist này?", isPresented: $confirmDelete, titleVisibility: .visible) { Button("Xoá playlist", role: .destructive) { Task { await viewModel.delete() } }; Button("Huỷ", role: .cancel) {} }.navigationDestination(isPresented: Binding(get: { selectedMovie != nil }, set: { if !$0 { selectedMovie = nil } })) { if let movie = selectedMovie { MovieDetailView(movie: movie, movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService) } }
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel: PlaylistDetailViewModel
+    @State private var confirmDelete = false
+    @State private var showingEditor = false
+    @State private var selectedMovie: Movie?
+    let movieService: MovieServicing
+    let watchHistoryService: WatchHistoryServicing
+    let libraryService: LibraryServicing
+
+    init(playlist: CinePlaylist, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing) {
+        self.movieService = movieService
+        self.watchHistoryService = watchHistoryService
+        self.libraryService = libraryService
+        _viewModel = StateObject(wrappedValue: PlaylistDetailViewModel(playlist: playlist, service: libraryService))
     }
-}
+
+    var body: some View {
+        Group {
+            if viewModel.isLoading && viewModel.detail == nil {
+                ProgressView("Đang tải playlist…")
+            } else if let detail = viewModel.detail {
+                ScrollView {
+                    LazyVStack(spacing: 18) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Label(detail.playlist.isPublic ? "Công khai" : "Riêng tư", systemImage: detail.playlist.isPublic ? "globe" : "lock.fill")
+                                Spacer()
+                                Button("Chỉnh sửa") { showingEditor = true }
+                            }
+                            if !detail.playlist.description.isEmpty {
+                                Text(detail.playlist.description).foregroundStyle(CineVietTheme.textMuted)
+                            }
+                        }
+                        .padding(16)
+                        .cineGlass(cornerRadius: 20, tint: CineVietTheme.accent)
+                        .padding(.horizontal)
+
+                        if detail.movies.isEmpty {
+                            ContentMessage(icon: "rectangle.stack", title: "Playlist chưa có phim", message: "Thêm phim từ trang chi tiết.")
+                                .frame(minHeight: 280)
+                        } else {
+                            ForEach(detail.movies) { movie in
+                                HStack {
+                                    Button { selectedMovie = movie } label: { MovieCardView(movie: movie) }
+                                        .buttonStyle(.plain)
+                                    Spacer()
+                                    Button(role: .destructive) { Task { await viewModel.remove(movie) } } label: {
+                                        Label("Gỡ", systemImage: "minus.circle.fill")
+                                    }
+                                    .frame(minWidth: 60)
+                                }
+                                .padding(.horizontal)
+                            }
+                            Button("Xoá playlist", role: .destructive) { confirmDelete = true }
+                                .buttonStyle(.bordered)
+                                .padding(.bottom, 30)
+                        }
+                    }
+                }
+            } else if let error = viewModel.errorMessage {
+                ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được playlist", message: error)
+            }
+        }
+        .background(CineVietTheme.background.ignoresSafeArea())
+        .navigationTitle(viewModel.detail?.playlist.name ?? viewModel.initial.name)
+        .hidesFloatingNavigation()
+        .task { await viewModel.load() }
+        .onChange(of: viewModel.isDeleted) { if $0 { dismiss() } }
+        .sheet(isPresented: $showingEditor) {
+            let item = viewModel.detail?.playlist ?? viewModel.initial
+            PlaylistEditorSheet(title: "Chỉnh sửa playlist", name: item.name, description: item.description, isPublic: item.isPublic, save: viewModel.update)
+        }
+        .confirmationDialog("Xoá playlist này?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Xoá playlist", role: .destructive) { Task { await viewModel.delete() } }
+            Button("Huỷ", role: .cancel) {}
+        }
+        .navigationDestination(isPresented: Binding(get: { selectedMovie != nil }, set: { if !$0 { selectedMovie = nil } })) {
+            if let movie = selectedMovie {
+                MovieDetailView(movie: movie, movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService)
+            }
+        }
+    }
 }
 
 private struct PlaylistEditorSheet: View {
