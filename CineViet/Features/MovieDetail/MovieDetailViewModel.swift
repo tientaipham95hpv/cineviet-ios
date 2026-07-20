@@ -14,16 +14,18 @@ final class MovieDetailViewModel: ObservableObject {
     @Published private(set) var isFavoriteBusy = false
     @Published private(set) var isSocialLoading = false
     @Published private(set) var isSubmitting = false
+    @Published private(set) var resumeItem: WatchHistoryItem?
     @Published var message: String?
 
     private let movieService: MovieServicing
     private let routeKey: String
     private let initialMovie: Movie
     private let libraryService: LibraryServicing
+    private let watchHistoryService: WatchHistoryServicing
 
-    init(movie: Movie, movieService: MovieServicing, libraryService: LibraryServicing) {
+    init(movie: Movie, movieService: MovieServicing, libraryService: LibraryServicing, watchHistoryService: WatchHistoryServicing) {
         initialMovie = movie; routeKey = movie.routeKey
-        self.movieService = movieService; self.libraryService = libraryService
+        self.movieService = movieService; self.libraryService = libraryService; self.watchHistoryService = watchHistoryService
         state = .loading
     }
 
@@ -33,10 +35,22 @@ final class MovieDetailViewModel: ObservableObject {
         return servers.indices.contains(selectedServerIndex) ? servers[selectedServerIndex] : nil
     }
     var firstPlayableSource: (server: EpisodeServer, episode: EpisodeItem)? {
+        if let resumeSource { return resumeSource }
         for server in displayedMovie.episodes {
             if let episode = server.items.first(where: { PlayerViewModel.directMediaURL(for: $0) != nil }) { return (server, episode) }
         }
         return nil
+    }
+    var resumeSource: (server: EpisodeServer, episode: EpisodeItem)? {
+        guard let resumeItem else { return nil }
+        let preferredServer = displayedMovie.episodes.indices.contains(resumeItem.serverIndex) ? displayedMovie.episodes[resumeItem.serverIndex] : displayedMovie.episodes.first { $0.name == resumeItem.serverName }
+        guard let server = preferredServer,
+              let episode = server.items.first(where: { $0.name == resumeItem.episodeName && PlayerViewModel.directMediaURL(for: $0) != nil }) else { return nil }
+        return (server, episode)
+    }
+    var resumeProgress: Double? {
+        guard let item = resumeItem, item.durationSeconds > 0 else { return nil }
+        return min(max(item.positionSeconds / item.durationSeconds, 0), 1)
     }
 
     func load() async {
@@ -47,8 +61,10 @@ final class MovieDetailViewModel: ObservableObject {
             state = .loaded(movie)
             async let ids = libraryService.favoriteIDs()
             async let lists = try? libraryService.playlists()
+            async let history = watchHistoryService.resume(movieId: movie.id)
             isFavorite = await ids.contains(movie.id)
             playlists = await lists ?? []
+            resumeItem = await history
             await refreshSocial()
         } catch { state = .failed(error.localizedDescription) }
     }

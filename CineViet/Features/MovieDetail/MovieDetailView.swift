@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import UIKit
 
 /// SwiftUI disables UINavigationController's edge-pop gesture when its native
 /// back button is hidden. Re-enable the existing gesture without adding a
@@ -28,8 +27,11 @@ struct MovieDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: MovieDetailViewModel
+    let movieService: MovieServicing
     let watchHistoryService: WatchHistoryServicing
+    let libraryService: LibraryServicing
     @State private var playerLaunch: PlayerLaunch?
+    @State private var selectedRelatedMovie: Movie?
     @State private var selectedSection: DetailSection = .episodes
     @State private var synopsisExpanded = false
     @State private var showingNewPlaylist = false
@@ -38,7 +40,8 @@ struct MovieDetailView: View {
     @State private var showingComments = false
 
     init(movie: Movie, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing) {
-        _viewModel = StateObject(wrappedValue: MovieDetailViewModel(movie: movie, movieService: movieService, libraryService: libraryService)); self.watchHistoryService = watchHistoryService
+        _viewModel = StateObject(wrappedValue: MovieDetailViewModel(movie: movie, movieService: movieService, libraryService: libraryService, watchHistoryService: watchHistoryService))
+        self.movieService = movieService; self.watchHistoryService = watchHistoryService; self.libraryService = libraryService
     }
 
     var body: some View {
@@ -46,8 +49,8 @@ struct MovieDetailView: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                 switch viewModel.state {
-                case .loading: ProgressView("Đang tải thông tin phim…").tint(CineVietTheme.accent).frame(maxWidth: .infinity).frame(minHeight: 600)
-                case .failed(let message): ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message).frame(maxWidth: .infinity).frame(minHeight: 520).onTapGesture { Task { await viewModel.retry() } }
+                case .loading: DetailLoadingView(width: geometry.size.width)
+                case .failed(let message): detailFailure(message)
                 case .loaded: content(proxy, width: geometry.size.width)
                 }
                 }
@@ -66,7 +69,7 @@ struct MovieDetailView: View {
         // Let the hero occupy the status-bar region. The pinned Back overlay
         // uses GeometryReader's safe-area inset to remain below system UI.
         .ignoresSafeArea(.container, edges: [.top, .bottom])
-        .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
+        .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.primary)
         .toolbar(.hidden, for: .navigationBar)
         .background(InteractivePopGestureRestorer())
         // Movie Detail keeps the floating tab bar visible. It is an overlay in
@@ -77,16 +80,20 @@ struct MovieDetailView: View {
         .sheet(isPresented: $showingComments) { CommentsSheet(viewModel: viewModel) }
         .alert("Tạo playlist", isPresented: $showingNewPlaylist) { TextField("Tên playlist", text: $newPlaylistName); Button("Tạo và thêm phim") { let name = newPlaylistName; newPlaylistName = ""; Task { await viewModel.createPlaylist(name: name) } }.disabled(newPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty); Button("Huỷ", role: .cancel) {} }
         .alert("CineViet", isPresented: Binding(get: { viewModel.message != nil }, set: { if !$0 { viewModel.message = nil } })) { Button("OK") { viewModel.message = nil } } message: { Text(viewModel.message ?? "") }
+        .navigationDestination(isPresented: Binding(get: { selectedRelatedMovie != nil }, set: { if !$0 { selectedRelatedMovie = nil } })) {
+            if let movie = selectedRelatedMovie { MovieDetailView(movie: movie, movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService) }
+        }
     }
 
     private func content(_ proxy: ScrollViewProxy, width: CGFloat) -> some View {
         let movie = viewModel.displayedMovie
         return VStack(alignment: .leading, spacing: 0) {
-            hero(movie).frame(width: width)
+            hero(movie, width: width)
             VStack(alignment: .leading, spacing: 18) {
+                identity(movie, width: width)
                 primaryActions(movie, proxy)
-                title(movie)
                 metadata(movie)
+                genres(movie)
                 synopsis(movie)
                 actions(movie)
                 tabs(movie)
@@ -119,11 +126,25 @@ struct MovieDetailView: View {
             .safeAreaInsets.top ?? 0
     }
 
-    private func hero(_ movie: Movie) -> some View {
-        ZStack(alignment: .topLeading) {
-            AsyncImage(url: movie.backdropURL) { phase in if case .success(let image) = phase { image.resizable().scaledToFill() } else { CineVietTheme.panel } }.frame(maxWidth: .infinity).frame(height: 320).clipped()
-            LinearGradient(colors: [.black.opacity(0.2), .clear, CineVietTheme.background], startPoint: .top, endPoint: .bottom)
+    private func hero(_ movie: Movie, width: CGFloat) -> some View {
+        let height = width >= 700 ? min(520, width * 0.5) : max(320, width * 0.92)
+        return ZStack(alignment: .bottom) {
+            AsyncImage(url: movie.backdropURL) { phase in
+                if case .success(let image) = phase { image.resizable().scaledToFill() }
+                else { ZStack { CineVietTheme.panel; Image(systemName: "film.fill").font(.system(size: 46)).foregroundStyle(CineVietTheme.textMuted) } }
+            }.frame(width: width, height: height).clipped()
+            LinearGradient(colors: [.black.opacity(0.32), .clear, CineVietTheme.background.opacity(0.94), CineVietTheme.background], startPoint: .top, endPoint: .bottom)
         }
+        .frame(width: width, height: height)
+        .accessibilityHidden(true)
+    }
+
+    private func detailFailure(_ message: String) -> some View {
+        VStack(spacing: 18) {
+            ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thông tin phim", message: message)
+            Button { Task { await viewModel.retry() } } label: { Label("Thử lại", systemImage: "arrow.clockwise").frame(minWidth: 130, minHeight: 48) }
+                .buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black)
+        }.frame(maxWidth: .infinity).frame(minHeight: 520).padding(24)
     }
 
     private var backButton: some View {
@@ -144,20 +165,50 @@ struct MovieDetailView: View {
     }
 
     private func primaryActions(_ movie: Movie, _ proxy: ScrollViewProxy) -> some View {
-        HStack(spacing: 12) {
-            Button { if let source = viewModel.firstPlayableSource { playerLaunch = PlayerLaunch(movie: movie, server: source.server, episode: source.episode) } } label: { ViewThatFits { Label(viewModel.firstPlayableSource == nil ? "Chưa có nguồn" : "Xem phim", systemImage: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill"); Image(systemName: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: true)).disabled(viewModel.firstPlayableSource == nil).accessibilityHint("Mở trình phát toàn màn hình")
+        VStack(spacing: 10) {
+            if let progress = viewModel.resumeProgress, let item = viewModel.resumeItem {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack { Label("Tiếp tục \(item.episodeName)", systemImage: "clock.arrow.circlepath").font(.subheadline.bold()); Spacer(); Text("\(Int(progress * 100))%").font(.caption.bold()).foregroundStyle(CineVietTheme.textMuted) }
+                    ProgressView(value: progress).tint(CineVietTheme.accent)
+                }.padding(.horizontal, 8).accessibilityElement(children: .combine)
+            }
+            HStack(spacing: 12) {
+            Button { if let source = viewModel.firstPlayableSource { playerLaunch = PlayerLaunch(movie: movie, server: source.server, episode: source.episode) } } label: { ViewThatFits { Label(viewModel.resumeItem == nil ? (viewModel.firstPlayableSource == nil ? "Chưa có nguồn" : "Xem phim") : "Tiếp tục xem", systemImage: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill"); Image(systemName: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: true)).disabled(viewModel.firstPlayableSource == nil).accessibilityHint("Mở trình phát toàn màn hình")
             Button { selectedSection = .episodes; animate { proxy.scrollTo("detail-sections", anchor: .top) } } label: { ViewThatFits { Label("Tập phim", systemImage: "list.bullet"); Image(systemName: "list.bullet") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: false)).disabled(movie.episodes.isEmpty)
+            }
         }
         .padding(8)
-        .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(CineVietTheme.panel.opacity(0.72), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 14)
     }
 
-    private func title(_ movie: Movie) -> some View { VStack(alignment: .leading, spacing: 6) { Text(movie.title).font(.system(size: 30, weight: .bold, design: .rounded)); if let original = movie.titleEn.trimmedNonEmpty, original.caseInsensitiveCompare(movie.title) != .orderedSame { Text(original).font(.title3).foregroundStyle(CineVietTheme.textMuted) } }.padding(.horizontal, 18) }
+    private func identity(_ movie: Movie, width: CGFloat) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .bottom, spacing: 20) { poster(movie, width: 150); title(movie); Spacer(minLength: 0) }.padding(.horizontal, 22)
+            HStack(alignment: .bottom, spacing: 15) { poster(movie, width: 108); title(movie); Spacer(minLength: 0) }.padding(.horizontal, 18)
+        }
+        .padding(.top, width >= 700 ? -118 : -82)
+    }
+
+    private func poster(_ movie: Movie, width: CGFloat) -> some View {
+        AsyncImage(url: movie.posterURL) { phase in
+            if case .success(let image) = phase { image.resizable().scaledToFill() }
+            else { ZStack { CineVietTheme.panel; Image(systemName: "film").foregroundStyle(CineVietTheme.textMuted) } }
+        }
+        .frame(width: width, height: width * 1.46).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.22)) }
+        .shadow(color: .black.opacity(0.38), radius: 18, y: 8).accessibilityHidden(true)
+    }
+
+    private func title(_ movie: Movie) -> some View { VStack(alignment: .leading, spacing: 7) { Text(movie.title).font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(.primary); if let original = movie.titleEn.trimmedNonEmpty, original.caseInsensitiveCompare(movie.title) != .orderedSame { Text(original).font(.title3).foregroundStyle(CineVietTheme.textMuted) } }.accessibilityElement(children: .combine) }
 
     @ViewBuilder private func metadata(_ movie: Movie) -> some View {
         let values: [String] = [movie.rating.flatMap { $0 > 0 ? String(format: "★ %0.1f", $0) : nil }, movie.quality.trimmedNonEmpty, movie.releaseYear.flatMap { $0 > 1800 ? String($0) : nil }, movie.duration.flatMap { $0 > 0 ? "\($0) phút" : nil }, movie.totalEpisodes.flatMap { $0 > 0 ? "\($0) tập" : nil }, movie.episodeCurrent.trimmedNonEmpty, movie.language.trimmedNonEmpty, movie.country.trimmedNonEmpty].compactMap { $0 }
-        if !values.isEmpty { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { ForEach(values, id: \.self) { value in Text(value).font(.system(size: 12, weight: .semibold, design: .rounded)).padding(.horizontal, 13).padding(.vertical, 9).background(.white.opacity(0.075), in: Capsule()).overlay { Capsule().stroke(.white.opacity(0.10)) } } }.padding(.horizontal, 18) } }
+        if !values.isEmpty { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { ForEach(values, id: \.self) { value in Text(value).font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(.primary).padding(.horizontal, 13).padding(.vertical, 9).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } } }.padding(.horizontal, 18) } }
+    }
+
+    @ViewBuilder private func genres(_ movie: Movie) -> some View {
+        if !movie.genres.isEmpty { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { ForEach(movie.genres, id: \.self) { genre in Label(genre, systemImage: "tag.fill").font(.caption.weight(.semibold)).foregroundStyle(CineVietTheme.accentDeep).padding(.horizontal, 12).frame(minHeight: 36).background(CineVietTheme.accent.opacity(0.12), in: Capsule()) } }.padding(.horizontal, 18) }.accessibilityLabel("Thể loại: \(movie.genres.joined(separator: ", "))") }
     }
 
     @ViewBuilder private func synopsis(_ movie: Movie) -> some View {
@@ -203,10 +254,26 @@ struct MovieDetailView: View {
         switch selectedSection {
         case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { if movie.episodes.count > 1 { HStack { Spacer(minLength: 0); Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").font(.subheadline.weight(.semibold)).lineLimit(1).padding(.horizontal, 14).frame(minHeight: 44).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.system(size: 14, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity, minHeight: 56).background(LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous)).overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(CineVietTheme.border.opacity(0.9)) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? 0.45 : 1) } } }.padding(.horizontal, 18).padding(.top, 8) }
         case .cast: VStack(alignment: .leading, spacing: 14) { ForEach(movie.directors.filter { !$0.name.isEmpty }, id: \.name) { Text("Đạo diễn: \($0.name)").font(.subheadline) }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92))], spacing: 16) { ForEach(movie.cast.filter { !$0.name.isEmpty }.prefix(30), id: \.name) { person in VStack { Circle().fill(CineVietTheme.panel).frame(width: 64, height: 64).overlay { Text(String(person.name.prefix(1))).font(.title2.bold()).foregroundStyle(CineVietTheme.accent) }; Text(person.name).font(.caption).multilineTextAlignment(.center).lineLimit(2) } } } }.padding(20)
-        case .related: ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movie.related) { MovieCardView(movie: $0) } }.padding(20) }
+        case .related: ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movie.related) { related in Button { selectedRelatedMovie = related } label: { MovieCardView(movie: related) }.buttonStyle(.plain).accessibilityHint("Mở chi tiết phim") } }.padding(20) }
         }
     }
     private func animate(_ changes: () -> Void) { if reduceMotion { changes() } else { withAnimation(.easeInOut(duration: 0.22), changes) } }
+}
+
+private struct DetailLoadingView: View {
+    let width: CGFloat
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Rectangle().fill(CineVietTheme.panel).frame(height: width >= 700 ? 430 : 330)
+            HStack(alignment: .bottom, spacing: 16) {
+                RoundedRectangle(cornerRadius: 18).fill(CineVietTheme.panel).frame(width: width >= 700 ? 150 : 108, height: width >= 700 ? 219 : 158)
+                VStack(alignment: .leading, spacing: 10) { RoundedRectangle(cornerRadius: 7).fill(CineVietTheme.panel).frame(height: 30); RoundedRectangle(cornerRadius: 7).fill(CineVietTheme.panel).frame(width: 180, height: 18) }
+            }.padding(.horizontal, 18).padding(.top, -75)
+            RoundedRectangle(cornerRadius: 20).fill(CineVietTheme.panel).frame(height: 64).padding(.horizontal, 16)
+            ForEach(0..<3, id: \.self) { _ in RoundedRectangle(cornerRadius: 7).fill(CineVietTheme.panel).frame(height: 18).padding(.horizontal, 18) }
+        }
+        .redacted(reason: .placeholder).accessibilityElement().accessibilityLabel("Đang tải thông tin phim")
+    }
 }
 
 private struct DetailCTAStyle: ButtonStyle {
