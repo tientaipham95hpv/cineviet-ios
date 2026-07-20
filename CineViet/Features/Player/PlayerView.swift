@@ -23,9 +23,9 @@ struct PlayerView: View {
     @State private var exiting = false
     private let watchTogetherService: WatchTogetherService?
 
-    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing, watchTogetherService: WatchTogetherService? = nil) {
+    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing, watchTogetherService: WatchTogetherService? = nil, offlineURL: URL? = nil) {
         self.watchTogetherService = watchTogetherService
-        _viewModel = StateObject(wrappedValue: PlayerViewModel(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService))
+        _viewModel = StateObject(wrappedValue: PlayerViewModel(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService, offlineURL: offlineURL))
     }
 
     var body: some View {

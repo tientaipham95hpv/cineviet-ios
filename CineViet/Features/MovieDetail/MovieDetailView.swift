@@ -41,6 +41,8 @@ struct MovieDetailView: View {
     @State private var showingComments = false
     @State private var showingCreateWatchRoom = false
     @State private var watchTogetherLaunch: PlayerLaunch?
+    @State private var showingDownloads = false
+    @State private var offlineAccessMessage: String?
 
     init(movie: Movie, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing) {
         _viewModel = StateObject(wrappedValue: MovieDetailViewModel(movie: movie, movieService: movieService, libraryService: libraryService, watchHistoryService: watchHistoryService))
@@ -83,8 +85,10 @@ struct MovieDetailView: View {
         .sheet(isPresented: $showingCreateWatchRoom) { CreateWatchRoomView(movie: viewModel.displayedMovie, service: container.watchTogetherService) { server, episode in watchTogetherLaunch = PlayerLaunch(movie: viewModel.displayedMovie, server: server, episode: episode) } }
         .sheet(isPresented: $showingRating) { RatingSheet(viewModel: viewModel) }
         .sheet(isPresented: $showingComments) { CommentsSheet(viewModel: viewModel) }
+        .sheet(isPresented: $showingDownloads) { OfflineDownloadPicker(movie: viewModel.displayedMovie, authenticationService: container.authenticationService).presentationDetents([.fraction(0.78), .large]) }
         .alert("Tạo playlist", isPresented: $showingNewPlaylist) { TextField("Tên playlist", text: $newPlaylistName); Button("Tạo và thêm phim") { let name = newPlaylistName; newPlaylistName = ""; Task { await viewModel.createPlaylist(name: name) } }.disabled(newPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty); Button("Huỷ", role: .cancel) {} }
         .alert("CineViet", isPresented: Binding(get: { viewModel.message != nil }, set: { if !$0 { viewModel.message = nil } })) { Button("OK") { viewModel.message = nil } } message: { Text(viewModel.message ?? "") }
+        .alert("CineViet", isPresented: Binding(get: { offlineAccessMessage != nil }, set: { if !$0 { offlineAccessMessage = nil } })) { Button("OK") { offlineAccessMessage = nil } } message: { Text(offlineAccessMessage ?? "") }
         .navigationDestination(isPresented: Binding(get: { selectedRelatedMovie != nil }, set: { if !$0 { selectedRelatedMovie = nil } })) {
             if let movie = selectedRelatedMovie { MovieDetailView(movie: movie, movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService) }
         }
@@ -228,6 +232,7 @@ struct MovieDetailView: View {
                 Menu { ForEach(viewModel.playlists) { list in Button(list.name) { Task { await viewModel.addToPlaylist(list) } } }; Divider(); Button("Tạo playlist mới…") { showingNewPlaylist = true } } label: { actionLabel("text.badge.plus", "Playlist", accent: .cyan) }
                     .buttonStyle(DetailActionStyle()).accessibilityLabel("Playlist")
                 action("star.fill", "Đánh giá", accent: .yellow) { showingRating = true }
+                if movie.episodes.contains(where: OfflineDownloadManager.serverEligible) { action("arrow.down.circle.fill", "Tải xuống", accent: CineVietTheme.accent) { Task { do { try await container.authenticationService.requireOfflineDownloadAccess(); showingDownloads = true } catch { offlineAccessMessage = (error as? LocalizedError)?.errorDescription ?? "Không thể kiểm tra quyền tải xuống" } } } }
                 action("bubble.left.fill", "Bình luận", accent: .mint) { showingComments = true }
                 ShareLink(item: canonicalURL(movie), subject: Text(movie.title), message: Text("Xem \(movie.title) trên CineViet")) { actionLabel("square.and.arrow.up", "Chia sẻ", accent: .orange) }
                     .buttonStyle(DetailActionStyle()).accessibilityLabel("Chia sẻ")

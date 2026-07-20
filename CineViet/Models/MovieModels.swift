@@ -35,6 +35,14 @@ struct Movie: Codable, Identifiable, Equatable {
         related = []; collection = nil
     }
 
+    static func offline(id: Int, slug: String, title: String, poster: String, server: EpisodeServer) -> Movie {
+        Movie(offlineID: id, slug: slug, title: title, poster: poster, server: server)
+    }
+
+    private init(offlineID: Int, slug: String, title: String, poster: String, server: EpisodeServer) {
+        id = offlineID; self.title = title; self.slug = slug; titleEn = ""; description = ""; tmdbId = ""; imdbId = ""; self.poster = poster; backdrop = ""; thumbnail = ""; trailerUrl = ""; releaseYear = nil; duration = nil; rating = nil; quality = ""; language = ""; country = ""; type = ""; episodeCurrent = ""; totalEpisodes = 1; partNumber = nil; genres = []; cast = []; directors = []; episodes = [server]; related = []; collection = nil
+    }
+
     var routeKey: String { slug.isEmpty ? String(id) : slug }
 
     var posterURL: URL? {
@@ -159,6 +167,8 @@ struct EpisodeItem: Codable, Equatable, Identifiable {
     var playUrl: String { linkM3u8.isEmpty ? linkEmbed : linkM3u8 }
     enum CodingKeys: String, CodingKey { case name, filename, linkM3u8 = "link_m3u8", linkEmbed = "link_embed", subtitles, audioSources = "audio_sources" }
     init(watchTogetherURL: String) { name = "Đang xem"; filename = ""; linkM3u8 = watchTogetherURL; linkEmbed = ""; subtitles = []; audioSources = [] }
+    static func offline(name: String, path: String) -> EpisodeItem { EpisodeItem(offlineName: name, path: path) }
+    private init(offlineName: String, path: String) { name = offlineName; filename = ""; linkM3u8 = URL(fileURLWithPath: path).absoluteString; linkEmbed = ""; subtitles = []; audioSources = [] }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

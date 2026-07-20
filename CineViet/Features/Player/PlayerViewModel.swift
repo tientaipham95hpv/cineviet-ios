@@ -78,6 +78,7 @@ final class PlayerViewModel: ObservableObject {
     private var shouldFetchRemoteResume = true
     private var lastSavedPosition: Double = 0
     private var started = false
+    private let offlineURL: URL?
 
     private var serverPreferenceKey: String { "cineviet.player.server.\(movie.id)" }
     private var episodePreferenceKey: String { "cineviet.player.episode.\(movie.id)" }
@@ -86,10 +87,11 @@ final class PlayerViewModel: ObservableObject {
     private var autoPlayPreferenceKey: String { "cineviet.player.autoplay" }
     private var subtitleStylePreferenceKey: String { "cineviet.player.subtitle.style.\(movie.id)" }
 
-    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing, defaults: UserDefaults = .standard) {
+    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing, offlineURL: URL? = nil, defaults: UserDefaults = .standard) {
         self.movie = movie
         self.defaults = defaults
         self.watchHistoryService = watchHistoryService
+        self.offlineURL = offlineURL
         // The launch contract is authoritative: an episode tapped in Detail or
         // resolved from Continue Watching must not be replaced by stale local
         // preferences from a previous session.
@@ -239,6 +241,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func buildCandidateQueue(includeEquivalentServers: Bool) -> [PlaybackCandidate] {
+        if let offlineURL { return [PlaybackCandidate(id: offlineURL.absoluteString, url: offlineURL, server: currentServer, episode: currentEpisode, label: "Bản tải xuống")] }
         var result: [PlaybackCandidate] = []
         var seen = Set<String>()
         func append(server: EpisodeServer, episode: EpisodeItem) {
@@ -364,7 +367,7 @@ final class PlayerViewModel: ObservableObject {
             player.seek(to: CMTime(seconds: position, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
             player.play(); return
         }
-        guard shouldFetchRemoteResume else { player.play(); return }
+        guard offlineURL == nil, shouldFetchRemoteResume else { player.play(); return }
         shouldFetchRemoteResume = false
         resumeTask = Task { [weak self] in
             guard let self else { return }
@@ -396,7 +399,7 @@ final class PlayerViewModel: ObservableObject {
     func cancelAutoNext() { autoNextTask?.cancel(); autoNextCountdown = nil; showNotice("Đã hủy tự chuyển tập") }
 
     private func saveProgress(force: Bool) {
-        guard let item = player.currentItem else { return }
+        guard offlineURL == nil, let item = player.currentItem else { return }
         let position = player.currentTime().seconds, duration = item.duration.seconds
         guard position.isFinite, duration.isFinite, position >= 3 else { return }
         let delta = abs(position - lastSavedPosition)

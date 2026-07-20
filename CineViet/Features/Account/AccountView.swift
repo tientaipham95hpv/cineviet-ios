@@ -27,11 +27,12 @@ struct AccountView: View {
     let user: User
     let updateUser: (User) -> Void
     let logout: () -> Void
+    let watchHistoryService: WatchHistoryServicing
     @StateObject private var model: AccountViewModel
     @State private var confirmsLogout = false
 
-    init(user: User, service: AuthenticationServicing, updateUser: @escaping (User) -> Void, logout: @escaping () -> Void) {
-        self.user = user; self.updateUser = updateUser; self.logout = logout
+    init(user: User, service: AuthenticationServicing, watchHistoryService: WatchHistoryServicing, updateUser: @escaping (User) -> Void, logout: @escaping () -> Void) {
+        self.user = user; self.watchHistoryService = watchHistoryService; self.updateUser = updateUser; self.logout = logout
         _model = StateObject(wrappedValue: AccountViewModel(service: service))
     }
 
@@ -161,6 +162,8 @@ struct AccountView: View {
             infoRow("Phiên bản", appBuildLabel, icon: "app.badge")
             Divider()
             infoRow("Tài khoản", user.id, icon: "number").textSelection(.enabled)
+            Divider()
+            NavigationLink { OfflineDownloadsView(watchHistoryService: watchHistoryService) } label: { HStack { Label("Nội dung tải xuống", systemImage: "arrow.down.circle.fill"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(CineVietTheme.textMuted) }.frame(minHeight: 48) }.buttonStyle(.plain).accessibilityHint("Mở thư viện xem offline")
         }
     }
 

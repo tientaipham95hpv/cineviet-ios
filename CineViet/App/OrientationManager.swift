@@ -7,6 +7,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         Self.orientationMask
     }
+
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        guard identifier == OfflineDownloadManager.backgroundIdentifier else { completionHandler(); return }
+        Task { @MainActor in OfflineDownloadManager.shared.handleBackgroundEvents(completionHandler: completionHandler) }
+    }
 }
 
 @MainActor
