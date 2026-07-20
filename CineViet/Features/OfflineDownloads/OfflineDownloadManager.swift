@@ -38,6 +38,7 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     private nonisolated let delegateEvents = OfflineDelegateEvents()
     private var tombstones = Set<String>()
     private var backgroundCompletion: (() -> Void)?
+    private var backgroundEventsFinished = false
     private var persistRetry: Task<Void, Never>?
     private var indexURL: URL { rootURL.appendingPathComponent("downloads.json") }
     private var rootURL: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("OfflineDownloads", isDirectory: true) }
@@ -46,7 +47,22 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     func handleBackgroundEvents(completionHandler: @escaping () -> Void) {
         backgroundCompletion?()
         backgroundCompletion = completionHandler
+        backgroundEventsFinished = false
         _ = session
+    }
+
+    private func finishDelegateEvent() {
+        delegateEvents.endFinalization()
+        completeBackgroundEventsIfReady()
+    }
+
+    private func completeBackgroundEventsIfReady() {
+        guard backgroundEventsFinished, !delegateEvents.hasPendingFinalizations else { return }
+        persist()
+        let completion = backgroundCompletion
+        backgroundCompletion = nil
+        backgroundEventsFinished = false
+        DispatchQueue.main.async { completion?() }
     }
 
     func load(force: Bool = false) async {
@@ -157,21 +173,19 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
 
 extension OfflineDownloadManager: AVAssetDownloadDelegate {
     nonisolated func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, didLoad timeRange: CMTimeRange, totalTimeRangesLoaded ranges: [NSValue], timeRangeExpectedToLoad expectedRange: CMTimeRange) { let expected = expectedRange.duration.seconds; let value = expected > 0 ? ranges.reduce(0) { $0 + $1.timeRangeValue.duration.seconds } / expected : 0; guard let id = assetDownloadTask.taskDescription else { return }; Task { @MainActor in self.update(id) { $0.progress = min(max(value, 0), 0.99); $0.state = .downloading } } }
-    nonisolated func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, didFinishDownloadingTo location: URL) { delegateEvents.store(location, for: assetDownloadTask.taskIdentifier) }
-    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) { guard let id = task.taskDescription else { return }; let taskID = task.taskIdentifier; let temporary = delegateEvents.take(taskID); let errorCode = (error as NSError?)?.code; Task { @MainActor in
+    nonisolated func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, didFinishDownloadingTo location: URL) {
+        // The system-owned location is temporary. Move it before returning from
+        // the delegate callback, then finalize it on the main actor in order.
+        delegateEvents.stage(location, for: assetDownloadTask.taskIdentifier)
+    }
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) { guard let id = task.taskDescription else { return }; delegateEvents.beginFinalization(); let taskID = task.taskIdentifier; let temporary = delegateEvents.take(taskID); let stagingError = delegateEvents.takeError(taskID); let errorCode = (error as NSError?)?.code; Task { @MainActor in
+        defer { self.finishDelegateEvent() }
         if self.tombstones.contains(id) { if let temporary { try? FileManager.default.removeItem(at: temporary) }; return }
         if let errorCode { if let temporary { try? FileManager.default.removeItem(at: temporary) }; self.update(id) { $0.state = errorCode == NSURLErrorCancelled ? .cancelled : .failed; $0.error = errorCode == NSURLErrorCancelled ? "Đã hủy" : "Lỗi mạng khi tải video"; $0.taskIdentifier = nil }; return }
-        guard let temporary else { self.update(id) { $0.state = .failed; $0.error = "Không tìm thấy tệp đã tải"; $0.taskIdentifier = nil }; return }
+        guard let temporary, stagingError == nil else { self.update(id) { $0.state = .failed; $0.error = stagingError ?? "Không tìm thấy tệp đã tải"; $0.taskIdentifier = nil }; return }
         do { let destination = self.itemDirectory(id).appendingPathComponent("asset.movpkg", isDirectory: true); try? FileManager.default.removeItem(at: destination.deletingLastPathComponent()); try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true); try FileManager.default.moveItem(at: temporary, to: destination); let bytes = (try? FileManager.default.allocatedSizeOfDirectory(at: destination)) ?? 0; self.update(id) { $0.state = .completed; $0.localManifestPath = "\(id)/asset.movpkg"; $0.progress = 1; $0.receivedBytes = bytes; $0.totalBytes = bytes; $0.taskIdentifier = nil; $0.error = "" } } catch { self.update(id) { $0.state = .failed; $0.error = "Không thể lưu bản tải xuống"; $0.taskIdentifier = nil } }
     } }
-    nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) { Task { @MainActor in
-        // Delegate callbacks are serialized by delegateQueue. Persist the final
-        // reconciled state before releasing the system background-event handoff.
-        self.persist()
-        let completion = self.backgroundCompletion
-        self.backgroundCompletion = nil
-        DispatchQueue.main.async { completion?() }
-    } }
+    nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) { Task { @MainActor in self.backgroundEventsFinished = true; self.completeBackgroundEventsIfReady() } }
 }
 
 enum OfflineError: LocalizedError { case unsupported, cannotCreate; var errorDescription: String? { switch self { case .unsupported: "Nguồn này không hỗ trợ tải offline"; case .cannotCreate: "Không thể tạo tác vụ tải xuống" } } }
@@ -179,7 +193,16 @@ private extension JSONEncoder { static var offline: JSONEncoder { let e = JSONEn
 private extension JSONDecoder { static var offline: JSONDecoder { let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d } }
 private extension FileManager { func allocatedSizeOfDirectory(at url: URL) throws -> Int64 { let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileAllocatedSizeKey, .totalFileAllocatedSizeKey]; return try enumerator(at: url, includingPropertiesForKeys: Array(keys))?.compactMap { $0 as? URL }.reduce(0) { result, file in let v = try? file.resourceValues(forKeys: keys); return result + Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0) } ?? 0 } }
 private final class OfflineDelegateEvents: @unchecked Sendable {
-    private let lock = NSLock(); private var locations: [Int: URL] = [:]
-    func store(_ url: URL, for id: Int) { lock.lock(); locations[id] = url; lock.unlock() }
+    private let lock = NSLock(); private var locations: [Int: URL] = [:]; private var errors: [Int: String] = [:]; private var pendingFinalizations = 0
+    func stage(_ url: URL, for id: Int) {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("OfflineDownloads/.incoming", isDirectory: true)
+        let destination = root.appendingPathComponent("\(id).movpkg", isDirectory: true)
+        do { try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); try? FileManager.default.removeItem(at: destination); try FileManager.default.moveItem(at: url, to: destination); lock.lock(); locations[id] = destination; lock.unlock() }
+        catch { lock.lock(); errors[id] = "Không thể lưu tệp tải xuống tạm thời"; lock.unlock() }
+    }
     func take(_ id: Int) -> URL? { lock.lock(); defer { lock.unlock() }; return locations.removeValue(forKey: id) }
+    func takeError(_ id: Int) -> String? { lock.lock(); defer { lock.unlock() }; return errors.removeValue(forKey: id) }
+    func beginFinalization() { lock.lock(); pendingFinalizations += 1; lock.unlock() }
+    func endFinalization() { lock.lock(); pendingFinalizations = max(0, pendingFinalizations - 1); lock.unlock() }
+    var hasPendingFinalizations: Bool { lock.lock(); defer { lock.unlock() }; return pendingFinalizations != 0 }
 }
