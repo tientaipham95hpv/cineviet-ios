@@ -174,22 +174,76 @@ struct MovieDetailView: View {
     }
 
     private func primaryActions(_ movie: Movie, _ proxy: ScrollViewProxy) -> some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
             if let progress = viewModel.resumeProgress, let item = viewModel.resumeItem {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack { Label("Tiếp tục \(item.episodeName)", systemImage: "clock.arrow.circlepath").font(.subheadline.bold()); Spacer(); Text("\(Int(progress * 100))%").font(.caption.bold()).foregroundStyle(CineVietTheme.textMuted) }
-                    ProgressView(value: progress).tint(CineVietTheme.accent)
-                }.padding(.horizontal, 8).accessibilityElement(children: .combine)
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CineVietTheme.accent)
+                            .frame(width: 30, height: 30)
+                            .background(CineVietTheme.accent.opacity(0.12), in: Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Tiếp tục xem")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(CineVietTheme.textMuted)
+                            Text(item.episodeName)
+                                .font(.subheadline.bold())
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        Text("\(Int(progress * 100))%")
+                            .font(.caption.monospacedDigit().bold())
+                            .foregroundStyle(CineVietTheme.accent)
+                    }
+                    ProgressView(value: progress)
+                        .tint(CineVietTheme.accent)
+                        .scaleEffect(x: 1, y: 1.35, anchor: .center)
+                }
+                .accessibilityElement(children: .combine)
             }
-            HStack(spacing: 12) {
-            Button { if let source = viewModel.firstPlayableSource { playerLaunch = PlayerLaunch(movie: movie, server: source.server, episode: source.episode) } } label: { ViewThatFits { Label(viewModel.resumeItem == nil ? (viewModel.firstPlayableSource == nil ? "Chưa có nguồn" : "Xem phim") : "Tiếp tục xem", systemImage: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill"); Image(systemName: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: true)).disabled(viewModel.firstPlayableSource == nil).accessibilityHint("Mở trình phát toàn màn hình")
-            Button { showingCreateWatchRoom = true } label: { ViewThatFits { Label("Xem chung", systemImage: "person.2.fill"); Image(systemName: "person.2.fill") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: false)).disabled(viewModel.firstPlayableSource == nil).accessibilityHint("Chọn tập phim và thiết lập phòng xem chung")
-            Button { selectedSection = .episodes; animate { proxy.scrollTo("detail-sections", anchor: .top) } } label: { ViewThatFits { Label("Tập phim", systemImage: "list.bullet"); Image(systemName: "list.bullet") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: false)).disabled(movie.episodes.isEmpty)
+
+            Button {
+                if let source = viewModel.firstPlayableSource {
+                    playerLaunch = PlayerLaunch(movie: movie, server: source.server, episode: source.episode)
+                }
+            } label: {
+                Label(
+                    viewModel.resumeItem == nil
+                        ? (viewModel.firstPlayableSource == nil ? "Chưa có nguồn phát" : "Xem phim ngay")
+                        : "Tiếp tục xem",
+                    systemImage: viewModel.firstPlayableSource == nil ? "play.slash.fill" : "play.fill"
+                )
+                .frame(maxWidth: .infinity, minHeight: 54)
+            }
+            .buttonStyle(DetailCTAStyle(primary: true))
+            .disabled(viewModel.firstPlayableSource == nil)
+            .accessibilityHint("Mở trình phát toàn màn hình")
+
+            HStack(spacing: 10) {
+                Button { showingCreateWatchRoom = true } label: {
+                    Label("Xem chung", systemImage: "person.2.fill")
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(DetailCTAStyle(primary: false))
+                .disabled(viewModel.firstPlayableSource == nil)
+                .accessibilityHint("Chọn tập phim và thiết lập phòng xem chung")
+
+                Button {
+                    selectedSection = .episodes
+                    animate { proxy.scrollTo("detail-sections", anchor: .top) }
+                } label: {
+                    Label("Tập phim", systemImage: "rectangle.stack.fill")
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(DetailCTAStyle(primary: false))
+                .disabled(movie.episodes.isEmpty)
             }
         }
-        .padding(8)
-        .background(CineVietTheme.panel.opacity(0.72), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .padding(.horizontal, 14)
+        .padding(16)
+        .background(CineVietTheme.panel.opacity(0.58), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(CineVietTheme.border, lineWidth: 0.8) }
+        .padding(.horizontal, 16)
     }
 
     private func identity(_ movie: Movie, width: CGFloat) -> some View {
