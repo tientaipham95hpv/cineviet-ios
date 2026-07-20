@@ -7,10 +7,26 @@ struct CineVietApp: App {
 
     var body: some Scene {
         WindowGroup {
-            SessionRootView(container: container)
-                .environmentObject(container)
-                .environmentObject(container.settings)
-                .preferredColorScheme(container.settings.appearance.colorScheme)
+            AppAppearanceRoot(container: container)
         }
+    }
+}
+
+/// Observes the one settings instance owned by AppContainer so a Picker change
+/// invalidates the scene root immediately (and the persisted value is reused on relaunch).
+private struct AppAppearanceRoot: View {
+    let container: AppContainer
+    @ObservedObject private var settings: AppSettings
+
+    init(container: AppContainer) {
+        self.container = container
+        self.settings = container.settings
+    }
+
+    var body: some View {
+        SessionRootView(container: container)
+            .environmentObject(container)
+            .environmentObject(settings)
+            .preferredColorScheme(settings.appearance.colorScheme)
     }
 }

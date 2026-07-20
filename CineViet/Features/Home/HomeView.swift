@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var viewModel: HomeViewModel
     let logout: () -> Void
     let watchHistoryService: WatchHistoryServicing
@@ -142,14 +143,22 @@ struct HomeView: View {
             }
             .frame(width: max(0, width - 24), height: height)
             .clipped()
+            // Keep most of the artwork untouched. Contrast is concentrated
+            // behind the copy instead of dimming the entire poster/backdrop.
             LinearGradient(
                 colors: compact
-                    ? [.clear, .black.opacity(0.10), .black.opacity(0.82)]
-                    : [.clear, .black.opacity(0.13), .black.opacity(0.76)],
+                    ? [.clear, .clear, .black.opacity(0.16), .black.opacity(0.68)]
+                    : [.clear, .clear, .black.opacity(0.10), .black.opacity(0.58)],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            LinearGradient(colors: [.black.opacity(compact ? 0.18 : 0.58), .clear], startPoint: .leading, endPoint: .trailing)
+            if !compact {
+                LinearGradient(
+                    colors: [.black.opacity(0.42), .black.opacity(0.16), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            }
             VStack(alignment: .leading, spacing: compact ? 10 : 12) {
                 Label("PHIM NỔI BẬT", systemImage: "flame.fill")
                     .font(.system(size: 11, weight: .black, design: .rounded)).tracking(1.1).foregroundStyle(CineVietTheme.accent)
@@ -177,7 +186,7 @@ struct HomeView: View {
         .frame(width: max(0, width - 24), height: height)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.18)) }
-        .shadow(color: .black.opacity(0.28), radius: 20, y: 11)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.14), radius: 20, y: 11)
         .padding(.horizontal, 12)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Phim nổi bật: \(movie.title)")
@@ -297,7 +306,12 @@ struct HomeView: View {
     private var homeBackground: some View {
         ZStack {
             CineVietTheme.background.ignoresSafeArea()
-            RadialGradient(colors: [CineVietTheme.accentDeep.opacity(0.18), .clear], center: .topTrailing, startRadius: 1, endRadius: 430).ignoresSafeArea()
+            RadialGradient(
+                colors: [CineVietTheme.accentDeep.opacity(colorScheme == .dark ? 0.11 : 0.07), .clear],
+                center: .topTrailing,
+                startRadius: 1,
+                endRadius: 430
+            ).ignoresSafeArea()
         }
     }
 }

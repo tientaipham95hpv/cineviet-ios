@@ -18,17 +18,19 @@ enum CineVietTheme {
 }
 
 struct GlassPanel: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     var cornerRadius: CGFloat = 18
     var tint: Color = .white
 
     func body(content: Content) -> some View {
         content
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(CineVietTheme.panel.opacity(colorScheme == .dark ? 0.44 : 0.72), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(tint.opacity(0.16), lineWidth: 0.8)
+                    .stroke(colorScheme == .dark ? tint.opacity(0.16) : CineVietTheme.border.opacity(0.65), lineWidth: 0.8)
             }
-            .shadow(color: .black.opacity(0.24), radius: 14, y: 7)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.10), radius: 14, y: 7)
     }
 }
 

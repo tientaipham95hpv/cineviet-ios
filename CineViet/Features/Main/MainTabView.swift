@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let user: User
     let movieService: MovieServicing
     let watchHistoryService: WatchHistoryServicing
@@ -63,7 +64,7 @@ struct MainTabView: View {
             .background(.ultraThinMaterial, in: Capsule())
             .background(Capsule().fill(CineVietTheme.panel.opacity(0.82)))
             .overlay { Capsule().stroke(CineVietTheme.border.opacity(0.8), lineWidth: 1) }
-            .shadow(color: .black.opacity(0.46), radius: 22, y: 10)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.42 : 0.14), radius: 22, y: 10)
 
             Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) { selectedTab = 4 } } label: {
                 Image(systemName: selectedTab == 4 ? "heart.fill" : "heart")
@@ -72,7 +73,7 @@ struct MainTabView: View {
                     .frame(width: 54, height: 54)
                     .background(selectedTab == 4 ? CineVietTheme.accent : CineVietTheme.panel.opacity(0.88), in: Circle())
                     .overlay { Circle().stroke(selectedTab == 4 ? CineVietTheme.accent.opacity(0.85) : CineVietTheme.border, lineWidth: 1.5) }
-                    .shadow(color: (selectedTab == 4 ? CineVietTheme.accent : .black).opacity(0.4), radius: 16, y: 7)
+                    .shadow(color: (selectedTab == 4 ? CineVietTheme.accent : .black).opacity(colorScheme == .dark ? 0.38 : 0.14), radius: 16, y: 7)
             }
             .accessibilityLabel("Yêu thích")
         }

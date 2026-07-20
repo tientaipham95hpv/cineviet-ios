@@ -70,7 +70,9 @@ struct AccountView: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
-                    .accessibilityHint("Chọn giao diện theo hệ thống, sáng hoặc tối")
+                    .id(settings.appearance)
+                    .accessibilityValue(settings.appearance.title)
+                    .accessibilityHint("Chọn giao diện theo hệ thống, sáng hoặc tối. Thay đổi được áp dụng ngay.")
                     LabeledContent("Phiên bản", value: appBuildLabel)
                         .textSelection(.enabled)
                         .accessibilityHint("Dùng mã này để xác minh bản ứng dụng đang cài")
