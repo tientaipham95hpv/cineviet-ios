@@ -272,7 +272,6 @@ private final class ShortEpisodeController: ObservableObject {
     private var endObserver: NSObjectProtocol?
 
     init(episode: EpisodeItem) { self.episode = episode; reload() }
-    deinit { if let timeObserver, let player { player.removeTimeObserver(timeObserver) }; if let endObserver { NotificationCenter.default.removeObserver(endObserver) } }
 
     func reload() {
         tearDown()
