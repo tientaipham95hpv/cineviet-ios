@@ -41,7 +41,7 @@ private struct OfflinePlayerBridge: View {
     let item: OfflineDownloadItem; let watchHistoryService: WatchHistoryServicing
     var body: some View {
         let episode = EpisodeItem.offline(name: item.episodeName, path: item.localManifestPath)
-        let server = EpisodeServer.offline(name: item.serverName, episode: episode)
+        let server = EpisodeServer(name: item.serverName, items: [episode])
         if let url = OfflineDownloadManager.shared.playbackURL(for: item), url.isFileURL {
             PlayerView(movie: Movie.offline(id: item.movieId, slug: item.movieSlug, title: item.movieTitle, poster: item.posterURL, server: server), server: server, episode: episode, watchHistoryService: watchHistoryService, offlineURL: url)
         } else { ContentMessage(icon: "exclamationmark.triangle", title: "Không thể phát offline", message: "Bản tải xuống không còn trên thiết bị") }
