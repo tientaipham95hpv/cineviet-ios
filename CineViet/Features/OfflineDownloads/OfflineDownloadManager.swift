@@ -52,7 +52,7 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         } catch { loadError = "Không đọc hoặc lưu được thư viện tải xuống." }
     }
 
-    func enqueue(movie: Movie, server: EpisodeServer, episode: EpisodeItem) async throws {
+    func enqueue(movie: Movie, server: EpisodeServer, episode: EpisodeItem, selectedAudioKeys: Set<String>? = nil, selectedSubtitleKeys: Set<String>? = nil) async throws {
         guard let source = Self.eligibleURL(episode), source.pathExtension.lowercased() == "m3u8" || source.absoluteString.lowercased().contains("m3u8") else { throw OfflineError.unsupported }
         await ensureLoaded()
         let id = OfflineDownloadItem.stableID(movieId: movie.id, slug: movie.slug, server: server.name, episode: episode.name)
@@ -60,11 +60,11 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         if let old = items.first(where: { $0.id == id }), old.state == .completed, fileExists(old) { return }
         tombstones.remove(id)
         let audio = episode.audioSources.compactMap { source -> OfflineTrack? in
-            guard Self.remoteURL(source.url) != nil else { return nil }
+            guard selectedAudioKeys?.contains(source.key) != false, Self.remoteURL(source.url) != nil else { return nil }
             return OfflineTrack(key: source.key, label: source.label, url: source.url, language: nil, format: nil)
         }
         let subtitles = episode.subtitles.compactMap { subtitle -> OfflineTrack? in
-            guard Self.remoteURL(subtitle.url) != nil else { return nil }
+            guard selectedSubtitleKeys?.contains(subtitle.lang) != false, Self.remoteURL(subtitle.url) != nil else { return nil }
             return OfflineTrack(key: subtitle.lang, label: subtitle.label, url: subtitle.url, language: subtitle.lang, format: subtitle.format)
         }
         let item = OfflineDownloadItem(id: id, movieId: movie.id, movieSlug: movie.slug, movieTitle: movie.title, episodeName: episode.name, serverName: server.name, sourceURL: source.absoluteString, posterURL: movie.posterURL?.absoluteString ?? "", audioSources: audio, subtitles: subtitles, state: .queued, createdAt: items.first(where: { $0.id == id })?.createdAt ?? Date(), localManifestPath: "", receivedBytes: 0, totalBytes: 0, progress: 0, error: "", taskIdentifier: nil)
@@ -200,7 +200,9 @@ private final class OfflineLoopbackServer: @unchecked Sendable {
 
     private func start() {
         guard let endpointPort = NWEndpoint.Port(rawValue: port), let listener = try? NWListener(using: .tcp, on: endpointPort) else { return }
-        listener.stateUpdateHandler = { _ in }
+        listener.stateUpdateHandler = { [weak self] state in
+            if case .failed = state { self?.queue.async { self?.listener?.cancel(); self?.listener = nil } }
+        }
         listener.newConnectionHandler = { [weak self] connection in self?.handle(connection) }
         self.listener = listener; listener.start(queue: queue)
     }
