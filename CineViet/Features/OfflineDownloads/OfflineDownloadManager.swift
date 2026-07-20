@@ -130,7 +130,15 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     private func allTasks() async -> [URLSessionTask] { await withCheckedContinuation { continuation in session.getAllTasks { continuation.resume(returning: $0) } } }
     private func start(_ id: String) async throws {
         guard let item = items.first(where: { $0.id == id }), let url = URL(string: item.sourceURL) else { throw OfflineError.unsupported }
-        let asset = AVURLAsset(url: url)
+        // Match Player transport: CineViet's HLS gateway rejects playlist, key and
+        // segment requests without trusted app provenance. AVURLAsset propagates
+        // these fields through the full asset-download resource graph.
+        let headers = [
+            "Origin": AppEnvironment.siteBaseURL.absoluteString,
+            "Referer": AppEnvironment.siteBaseURL.appendingPathComponent("").absoluteString,
+            "User-Agent": AppEnvironment.userAgent
+        ]
+        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         guard let task = session.makeAssetDownloadTask(asset: asset, assetTitle: "\(item.movieTitle) – \(item.episodeName)", assetArtworkData: nil, options: [AVAssetDownloadTaskMinimumRequiredMediaBitrateKey: 0]) else { throw OfflineError.cannotCreate }
         task.taskDescription = id; update(id) { $0.state = .downloading; $0.error = ""; $0.progress = 0; $0.taskIdentifier = task.taskIdentifier }; task.resume()
     }
