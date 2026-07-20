@@ -79,9 +79,8 @@ struct PlayerView: View {
                 Spacer(minLength: 8)
                 bottomControls
             }
-            .padding(.horizontal, 22).padding(.vertical, 14)
-            .safeAreaPadding(.horizontal, 8)
-            .safeAreaPadding(.vertical, 4)
+            .padding(.horizontal, 30)
+            .padding(.vertical, 18)
             lockButton(locked: false)
         }
         .contentShape(Rectangle())
