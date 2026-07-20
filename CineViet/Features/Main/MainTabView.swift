@@ -16,7 +16,7 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             HomeView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService, logout: logout).tag(0)
             SearchView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(1)
-            PlaylistsView(libraryService: libraryService).tag(2)
+            LibraryView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(2)
             AccountView(user: user, service: authenticationService, updateUser: updateUser, logout: logout).tag(3)
             FavoritesView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(4)
         }
@@ -57,7 +57,7 @@ struct MainTabView: View {
             HStack(spacing: 2) {
                 navItem(0, "house.fill", "Trang chủ")
                 navItem(1, "magnifyingglass", "Tìm kiếm")
-                navItem(2, "rectangle.stack.fill", "Playlist")
+                navItem(2, "books.vertical.fill", "Thư viện")
                 navItem(3, "person.fill", "Tài khoản")
             }
             .padding(7)
