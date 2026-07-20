@@ -228,13 +228,18 @@ struct PlayerView: View {
             case .episodes:
                 ForEach(viewModel.currentServer.items) { episode in SelectionRow(title: episode.name, detail: PlayerViewModel.directMediaURL(for: episode) == nil ? "Chưa có nguồn trực tiếp" : "Sẵn sàng phát", selected: episode.id == viewModel.currentEpisode.id) { choose { viewModel.play(episode, server: viewModel.currentServer) } } }
             case .audio:
-                SelectionRow(title: "Theo nguồn HLS chính", detail: "Âm thanh mặc định của nguồn", selected: viewModel.selectedAudioKey == nil) { choose { viewModel.selectAudio(nil) } }
-                ForEach(viewModel.availableAudio) { source in SelectionRow(title: source.label.isEmpty ? source.key : source.label, detail: source.key, selected: source.key == viewModel.selectedAudioKey) { choose { viewModel.selectAudio(source) } } }
+                SelectionRow(title: "Theo nguồn HLS chính", detail: "Nguồn API • mặc định", selected: viewModel.selectedAudioKey == nil) { choose { viewModel.selectAudio(nil) } }
+                ForEach(viewModel.availableAudio) { source in SelectionRow(title: source.label.isEmpty ? source.key : source.label, detail: "Nguồn API • \(source.key)", selected: source.key == viewModel.selectedAudioKey) { choose { viewModel.selectAudio(source) } } }
+                if !viewModel.embeddedAudioOptions.isEmpty {
+                    SelectionRow(title: "Mặc định trong nguồn", detail: "Track nhúng HLS", selected: viewModel.selectedEmbeddedAudioID == nil) { choose { viewModel.selectEmbeddedAudio(nil) } }
+                    ForEach(viewModel.embeddedAudioOptions) { track in SelectionRow(title: track.displayName, detail: "Track nhúng HLS • \(track.languageTag ?? "không rõ ngôn ngữ")", selected: track.id == viewModel.selectedEmbeddedAudioID) { choose { viewModel.selectEmbeddedAudio(track) } } }
+                }
             case .subtitles:
                 SelectionRow(title: "Tắt phụ đề", detail: nil, selected: viewModel.selectedSubtitleLanguage == "off") { choose { viewModel.selectSubtitle("off") } }
                 if hasSubtitle("vi") && hasSubtitle("en") { SelectionRow(title: "Song ngữ Việt + Anh", detail: "Hiển thị đồng thời hai track ngoài", selected: viewModel.selectedSubtitleLanguage == "dual") { choose { viewModel.selectSubtitle("dual") } } }
-                ForEach(viewModel.availableSubtitles) { track in SelectionRow(title: track.label.isEmpty ? track.lang.uppercased() : track.label, detail: track.format.uppercased(), selected: viewModel.selectedSubtitleLanguage == track.lang) { choose { viewModel.selectSubtitle(track.lang) } } }
-                if !viewModel.availableSubtitles.isEmpty {
+                ForEach(viewModel.availableSubtitles) { track in SelectionRow(title: track.label.isEmpty ? track.lang.uppercased() : track.label, detail: "Phụ đề ngoài • \(track.format.uppercased())", selected: viewModel.selectedSubtitleLanguage == "external:\(track.id)") { choose { viewModel.selectSubtitle("external:\(track.id)") } } }
+                ForEach(viewModel.embeddedSubtitleOptions) { track in SelectionRow(title: track.displayName, detail: "Phụ đề nhúng HLS • \(track.languageTag ?? "không rõ ngôn ngữ")", selected: viewModel.selectedSubtitleLanguage == "embedded:\(track.id)") { choose { viewModel.selectSubtitle("embedded:\(track.id)") } } }
+                if !viewModel.availableSubtitles.isEmpty || !viewModel.embeddedSubtitleOptions.isEmpty {
                     Button { activePanel = .subtitleSettings } label: { Label("Cài đặt phụ đề", systemImage: "textformat.size") }
                         .buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black).padding(.top, 8)
                 }
@@ -287,7 +292,7 @@ private struct PlayerSelectionPanel<Content: View>: View {
 
 private struct SelectionRow: View {
     let title: String; let detail: String?; let selected: Bool; let action: () -> Void
-    var body: some View { Button(action: action) { HStack(spacing: 12) { Image(systemName: selected ? "checkmark.circle.fill" : "circle").foregroundStyle(selected ? CineVietTheme.accent : CineVietTheme.textMuted); VStack(alignment: .leading, spacing: 3) { Text(title).font(.subheadline.bold()); if let detail { Text(detail).font(.caption).foregroundStyle(CineVietTheme.textMuted) } }; Spacer() }.padding(14).background(selected ? CineVietTheme.accent.opacity(0.12) : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 13)).overlay { RoundedRectangle(cornerRadius: 13).stroke(selected ? CineVietTheme.accent.opacity(0.55) : CineVietTheme.border) } }.buttonStyle(.plain).foregroundStyle(.white) }
+    var body: some View { Button(action: action) { HStack(spacing: 12) { Image(systemName: selected ? "checkmark.circle.fill" : "circle").foregroundStyle(selected ? CineVietTheme.accent : CineVietTheme.textMuted); VStack(alignment: .leading, spacing: 3) { Text(title).font(.subheadline.bold()); if let detail { Text(detail).font(.caption).foregroundStyle(CineVietTheme.textMuted) } }; Spacer() }.padding(14).frame(minHeight: 44).background(selected ? CineVietTheme.accent.opacity(0.12) : CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 13)).overlay { RoundedRectangle(cornerRadius: 13).stroke(selected ? CineVietTheme.accent.opacity(0.55) : CineVietTheme.border) } }.buttonStyle(.plain).foregroundStyle(.white).accessibilityElement(children: .combine).accessibilityLabel(detail.map { "\(title), \($0)" } ?? title).accessibilityValue(selected ? "Đã chọn" : "Chưa chọn").accessibilityAddTraits(selected ? .isSelected : []) }
 }
 
 private struct SubtitleSettingsPanel: View {
@@ -311,10 +316,12 @@ private struct SubtitleSettingsPanel: View {
                 Picker("Font chữ", selection: Binding(get: { style.font }, set: { onChange(language, styleWith(style, font: $0)) })) { ForEach(["Lora", "Plus Jakarta Sans", "Arial", "Tahoma"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
                 Text("Cỡ chữ: \(Int(style.size))px")
                 Slider(value: Binding(get: { style.size }, set: { onChange(language, styleWith(style, size: $0)) }), in: 10...(language == "vi" ? 50 : 40), step: 1).tint(CineVietTheme.accent)
+                    .accessibilityLabel("Cỡ chữ phụ đề").accessibilityValue("\(Int(style.size)) điểm")
                 Text("Màu chữ").font(.subheadline.bold())
                 HStack(spacing: 14) { ForEach(["FFFFFF", "FFFF99", "FFEB3B", "80D8FF", "FFB3C7"], id: \.self) { hex in Button { onChange(language, styleWith(style, colorHex: hex)) } label: { Circle().fill(Color.playerHex(hex)).frame(width: 36, height: 36).overlay { Circle().stroke(CineVietTheme.accent, lineWidth: style.colorHex == hex ? 3 : 1) } } } }
                 Text("Vị trí: \(Int(style.bottom))% từ cạnh dưới")
                 Slider(value: Binding(get: { style.bottom }, set: { onChange(language, styleWith(style, bottom: $0)) }), in: 2...30, step: 1).tint(CineVietTheme.accent)
+                    .accessibilityLabel("Vị trí phụ đề").accessibilityValue("\(Int(style.bottom)) phần trăm từ cạnh dưới")
                 HStack { Button("Reset tất cả", action: onReset).buttonStyle(.bordered); Spacer(); Text("Thay đổi được áp dụng ngay").font(.caption).foregroundStyle(CineVietTheme.textMuted) }
             }.padding(20)
         }
@@ -359,6 +366,8 @@ private struct CollisionSafeSubtitleLayout: View {
             }
         }
         .onPreferenceChange(SubtitleSizePreferenceKey.self) { measured.merge($0) { _, new in new } }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(activeLanguages.compactMap { captions[$0] }.joined(separator: " "))
     }
 
     private var activeLanguages: [String] {
