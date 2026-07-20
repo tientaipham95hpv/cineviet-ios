@@ -18,7 +18,6 @@ struct MainTabView: View {
             SearchView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(1)
             LibraryView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(2)
             AccountView(user: user, service: authenticationService, updateUser: updateUser, logout: logout).tag(3)
-            FavoritesView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(4)
         }
         .toolbar(.hidden, for: .tabBar)
         // The floating bar is visual chrome, not layout content. Using a
@@ -53,30 +52,17 @@ struct MainTabView: View {
     }
 
     private var floatingNavigation: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 2) {
-                navItem(0, "house.fill", "Trang chủ")
-                navItem(1, "magnifyingglass", "Tìm kiếm")
-                navItem(2, "books.vertical.fill", "Thư viện")
-                navItem(3, "person.fill", "Tài khoản")
-            }
-            .padding(7)
-            .background(.ultraThinMaterial, in: Capsule())
-            .background(Capsule().fill(CineVietTheme.panel.opacity(0.82)))
-            .overlay { Capsule().stroke(CineVietTheme.border.opacity(0.8), lineWidth: 1) }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.42 : 0.14), radius: 22, y: 10)
-
-            Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) { selectedTab = 4 } } label: {
-                Image(systemName: selectedTab == 4 ? "heart.fill" : "heart")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(selectedTab == 4 ? .black : .primary)
-                    .frame(width: 54, height: 54)
-                    .background(selectedTab == 4 ? CineVietTheme.accent : CineVietTheme.panel.opacity(0.88), in: Circle())
-                    .overlay { Circle().stroke(selectedTab == 4 ? CineVietTheme.accent.opacity(0.85) : CineVietTheme.border, lineWidth: 1.5) }
-                    .shadow(color: (selectedTab == 4 ? CineVietTheme.accent : .black).opacity(colorScheme == .dark ? 0.38 : 0.14), radius: 16, y: 7)
-            }
-            .accessibilityLabel("Yêu thích")
+        HStack(spacing: 2) {
+            navItem(0, "house.fill", "Trang chủ")
+            navItem(1, "magnifyingglass", "Tìm kiếm")
+            navItem(2, "books.vertical.fill", "Thư viện")
+            navItem(3, "person.fill", "Tài khoản")
         }
+        .padding(7)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(Capsule().fill(CineVietTheme.panel.opacity(0.82)))
+        .overlay { Capsule().stroke(CineVietTheme.border.opacity(0.8), lineWidth: 1) }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.42 : 0.14), radius: 22, y: 10)
         .padding(.horizontal, 18)
         .padding(.top, 6)
         .padding(.bottom, 5)
