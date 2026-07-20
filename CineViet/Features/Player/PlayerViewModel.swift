@@ -268,7 +268,18 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func buildCandidateQueue(includeEquivalentServers: Bool) -> [PlaybackCandidate] {
-        if let offlineURL { return [PlaybackCandidate(id: offlineURL.absoluteString, url: offlineURL, server: currentServer, episode: currentEpisode, label: "Bản tải xuống")] }
+        if let offlineURL {
+            // App v2 treats each API audio source as a complete alternate HLS
+            // playback URL, not as an AVPlayer embedded-audio selection. The
+            // offline package mirrors that layout, so a selected downloaded
+            // audio playlist must replace the main local playlist.
+            if let selectedAudioKey,
+               let selected = currentEpisode.audioSources.first(where: { $0.key == selectedAudioKey }),
+               let selectedURL = Self.normalizedURL(selected.url) {
+                return [PlaybackCandidate(id: selectedURL.absoluteString, url: selectedURL, server: currentServer, episode: currentEpisode, label: "Bản tải xuống • \(selected.label.isEmpty ? selected.key : selected.label)")]
+            }
+            return [PlaybackCandidate(id: offlineURL.absoluteString, url: offlineURL, server: currentServer, episode: currentEpisode, label: "Bản tải xuống")]
+        }
         var result: [PlaybackCandidate] = []
         var seen = Set<String>()
         func append(server: EpisodeServer, episode: EpisodeItem) {
