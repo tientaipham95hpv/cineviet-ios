@@ -29,6 +29,12 @@ struct Movie: Codable, Identifiable, Equatable {
     let related: [Movie]
     let collection: MovieCollection?
 
+    init(watchTogetherTitle title: String, code: String, videoURL: String) {
+        id = 0; self.title = title; slug = "watch-together-\(code)"; titleEn = ""; description = ""; tmdbId = ""; imdbId = ""; poster = ""; backdrop = ""; thumbnail = ""; trailerUrl = ""; releaseYear = nil; duration = nil; rating = nil; quality = ""; language = ""; country = ""; type = ""; episodeCurrent = ""; totalEpisodes = nil; partNumber = nil; genres = []; cast = []; directors = []
+        episodes = [EpisodeServer(name: "Xem chung", items: [EpisodeItem(watchTogetherURL: videoURL)])]
+        related = []; collection = nil
+    }
+
     var routeKey: String { slug.isEmpty ? String(id) : slug }
 
     var posterURL: URL? {
@@ -139,6 +145,7 @@ struct EpisodeServer: Codable, Equatable {
     let name: String
     let items: [EpisodeItem]
     enum CodingKeys: String, CodingKey { case name = "server_name", items = "server_data" }
+    init(name: String, items: [EpisodeItem]) { self.name = name; self.items = items }
 }
 
 struct EpisodeItem: Codable, Equatable, Identifiable {
@@ -151,6 +158,7 @@ struct EpisodeItem: Codable, Equatable, Identifiable {
     var id: String { "\(name)|\(linkM3u8)|\(linkEmbed)" }
     var playUrl: String { linkM3u8.isEmpty ? linkEmbed : linkM3u8 }
     enum CodingKeys: String, CodingKey { case name, filename, linkM3u8 = "link_m3u8", linkEmbed = "link_embed", subtitles, audioSources = "audio_sources" }
+    init(watchTogetherURL: String) { name = "Đang xem"; filename = ""; linkM3u8 = watchTogetherURL; linkEmbed = ""; subtitles = []; audioSources = [] }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

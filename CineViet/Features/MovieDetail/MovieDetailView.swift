@@ -24,6 +24,7 @@ private struct PlayerLaunch: Identifiable { let id = UUID(); let movie: Movie; l
 private enum DetailSection: String, CaseIterable, Identifiable { case episodes = "Tập phim", cast = "Diễn viên", related = "Đề xuất"; var id: Self { self } }
 
 struct MovieDetailView: View {
+    @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: MovieDetailViewModel
@@ -38,6 +39,8 @@ struct MovieDetailView: View {
     @State private var newPlaylistName = ""
     @State private var showingRating = false
     @State private var showingComments = false
+    @State private var showingCreateWatchRoom = false
+    @State private var watchTogetherLaunch: PlayerLaunch?
 
     init(movie: Movie, movieService: MovieServicing, watchHistoryService: WatchHistoryServicing, libraryService: LibraryServicing) {
         _viewModel = StateObject(wrappedValue: MovieDetailViewModel(movie: movie, movieService: movieService, libraryService: libraryService, watchHistoryService: watchHistoryService))
@@ -76,6 +79,8 @@ struct MovieDetailView: View {
         // MainTabView, so it must not reserve or remove layout space here.
         .task { await viewModel.load() }
         .fullScreenCover(item: $playerLaunch) { launch in PlayerView(movie: launch.movie, server: launch.server, episode: launch.episode, watchHistoryService: watchHistoryService).background(Color.black.ignoresSafeArea()).interactiveDismissDisabled() }
+        .fullScreenCover(item: $watchTogetherLaunch) { launch in PlayerView(movie: launch.movie, server: launch.server, episode: launch.episode, watchHistoryService: watchHistoryService, watchTogetherService: container.watchTogetherService).background(Color.black.ignoresSafeArea()).interactiveDismissDisabled() }
+        .sheet(isPresented: $showingCreateWatchRoom) { CreateWatchRoomView(movie: viewModel.displayedMovie, service: container.watchTogetherService) { server, episode in watchTogetherLaunch = PlayerLaunch(movie: viewModel.displayedMovie, server: server, episode: episode) } }
         .sheet(isPresented: $showingRating) { RatingSheet(viewModel: viewModel) }
         .sheet(isPresented: $showingComments) { CommentsSheet(viewModel: viewModel) }
         .alert("Tạo playlist", isPresented: $showingNewPlaylist) { TextField("Tên playlist", text: $newPlaylistName); Button("Tạo và thêm phim") { let name = newPlaylistName; newPlaylistName = ""; Task { await viewModel.createPlaylist(name: name) } }.disabled(newPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty); Button("Huỷ", role: .cancel) {} }
@@ -174,6 +179,7 @@ struct MovieDetailView: View {
             }
             HStack(spacing: 12) {
             Button { if let source = viewModel.firstPlayableSource { playerLaunch = PlayerLaunch(movie: movie, server: source.server, episode: source.episode) } } label: { ViewThatFits { Label(viewModel.resumeItem == nil ? (viewModel.firstPlayableSource == nil ? "Chưa có nguồn" : "Xem phim") : "Tiếp tục xem", systemImage: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill"); Image(systemName: viewModel.firstPlayableSource == nil ? "play.slash" : "play.fill") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: true)).disabled(viewModel.firstPlayableSource == nil).accessibilityHint("Mở trình phát toàn màn hình")
+            Button { showingCreateWatchRoom = true } label: { ViewThatFits { Label("Xem chung", systemImage: "person.2.fill"); Image(systemName: "person.2.fill") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: false)).disabled(viewModel.firstPlayableSource == nil).accessibilityHint("Chọn tập phim và thiết lập phòng xem chung")
             Button { selectedSection = .episodes; animate { proxy.scrollTo("detail-sections", anchor: .top) } } label: { ViewThatFits { Label("Tập phim", systemImage: "list.bullet"); Image(systemName: "list.bullet") }.frame(maxWidth: .infinity, minHeight: 52) }.buttonStyle(DetailCTAStyle(primary: false)).disabled(movie.episodes.isEmpty)
             }
         }

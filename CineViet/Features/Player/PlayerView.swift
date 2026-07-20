@@ -17,8 +17,14 @@ struct PlayerView: View {
     @State private var pictureInPictureRequestID = 0
     @State private var isScrubbing = false
     @State private var scrubPosition: Double = 0
+    @State private var showingChat = false
+    @State private var chatText = ""
+    @State private var lastSyncSent = Date.distantPast
+    @State private var exiting = false
+    private let watchTogetherService: WatchTogetherService?
 
-    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing) {
+    init(movie: Movie, server: EpisodeServer, episode: EpisodeItem, watchHistoryService: WatchHistoryServicing, watchTogetherService: WatchTogetherService? = nil) {
+        self.watchTogetherService = watchTogetherService
         _viewModel = StateObject(wrappedValue: PlayerViewModel(movie: movie, server: server, episode: episode, watchHistoryService: watchHistoryService))
     }
 
@@ -42,6 +48,10 @@ struct PlayerView: View {
             NotificationCenter.default.post(name: .cineVietPlayerDidAppear, object: nil)
             OrientationManager.landscape()
             viewModel.start()
+            if let service = watchTogetherService, !service.isHost, let state = service.state {
+                if state.currentTime > 0 { viewModel.seek(to: state.currentTime) }
+                if state.playing != viewModel.isPlaying { viewModel.togglePlayback() }
+            }
             revealControls()
         }
         .onDisappear {
@@ -58,6 +68,13 @@ struct PlayerView: View {
             @unknown default: break
             }
         }
+        .onChange(of: viewModel.isPlaying) { _ in emitWatchSync(force: true) }
+        .onChange(of: viewModel.playbackPosition) { _ in emitWatchSync() }
+        .onReceive(NotificationCenter.default.publisher(for: .watchTogetherRoomState)) { note in applyWatchState(note) }
+        .onReceive(NotificationCenter.default.publisher(for: .watchTogetherRoomClosed)) { note in
+            if let service = watchTogetherService, note.object as AnyObject? === service { exitPlayer() }
+        }
+        .sheet(isPresented: $showingChat) { if let service = watchTogetherService { WatchTogetherChatView(service: service, text: $chatText) } }
     }
 
     private var tapSurface: some View {
@@ -125,6 +142,7 @@ struct PlayerView: View {
                 featureButton("captions.bubble.fill", "Phụ đề", active: viewModel.selectedSubtitleLanguage != "off") { activePanel = .subtitles }
                 featureButton("list.bullet.rectangle.fill", "Tập phim") { activePanel = .episodes }
                 featureButton("waveform", "Âm thanh", active: viewModel.selectedAudioKey != nil) { activePanel = .audio }
+                if watchTogetherService != nil { featureButton("message.fill", "Trò chuyện") { showingChat = true } }
                 Spacer(minLength: 6)
             }
         }
@@ -235,10 +253,26 @@ struct PlayerView: View {
     private func hideControls() { hideTask?.cancel(); withAnimation(.easeInOut(duration: 0.18)) { controlsVisible = false } }
     private func scheduleHide() { hideTask?.cancel(); guard !controlsLocked, activePanel == nil, !isScrubbing else { return }; hideTask = Task { try? await Task.sleep(nanoseconds: 4_000_000_000); guard !Task.isCancelled else { return }; await MainActor.run { hideControls() } } }
     private func exitPlayer() {
+        guard !exiting else { return }
+        exiting = true
         viewModel.stop()
-        OrientationManager.portrait()
-        NotificationCenter.default.post(name: .cineVietPlayerDidDisappear, object: nil)
-        dismiss()
+        Task {
+            if let service = watchTogetherService, !service.roomClosed { await service.leave(forceDelete: service.isHost) }
+            OrientationManager.portrait()
+            NotificationCenter.default.post(name: .cineVietPlayerDidDisappear, object: nil)
+            dismiss()
+        }
+    }
+    private func emitWatchSync(force: Bool = false) {
+        guard let service = watchTogetherService, service.isHost else { return }
+        let now = Date(); guard force || now.timeIntervalSince(lastSyncSent) >= 1.5 else { return }
+        lastSyncSent = now; service.sync(currentTime: viewModel.playbackPosition, playing: viewModel.isPlaying)
+    }
+    private func applyWatchState(_ note: Notification) {
+        guard let service = watchTogetherService, note.object as AnyObject? === service, !service.isHost, let state = service.state else { return }
+        if let from = note.userInfo?["from"] as? String, from == service.socketID { return }
+        if abs(state.currentTime - viewModel.playbackPosition) > 3 { viewModel.seek(to: state.currentTime) }
+        if state.playing != viewModel.isPlaying { viewModel.togglePlayback() }
     }
     private func time(_ seconds: Double) -> String { let value = max(0, Int(seconds.isFinite ? seconds : 0)); return String(format: "%02d:%02d", value / 60, value % 60) }
     private func panelTitle(_ panel: PlayerPanel) -> String { switch panel { case .episodes: return "Chọn tập phim"; case .servers: return "Chọn máy chủ"; case .audio: return "Chọn âm thanh"; case .subtitles: return "Chọn phụ đề"; case .subtitleSettings: return "Cài đặt phụ đề" } }
