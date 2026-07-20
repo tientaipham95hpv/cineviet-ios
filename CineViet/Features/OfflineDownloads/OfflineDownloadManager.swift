@@ -87,14 +87,19 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         if let old = items.first(where: { $0.id == id }), old.state == .completed, fileExists(old) { return }
         tombstones.remove(id)
         let item = OfflineDownloadItem(id: id, movieId: movie.id, movieSlug: movie.slug, movieTitle: movie.title, episodeName: episode.name, serverName: server.name, sourceURL: source.absoluteString, posterURL: movie.posterURL?.absoluteString ?? "", audioSources: [], subtitles: [], state: .queued, createdAt: items.first(where: { $0.id == id })?.createdAt ?? Date(), localManifestPath: "", receivedBytes: 0, totalBytes: 0, progress: 0, error: "", taskIdentifier: nil)
-        try replaceAndPersist(item); try await start(id)
+        try replaceAndPersist(item)
+        do { try await start(id) }
+        catch {
+            update(id) { $0.state = .failed; $0.error = (error as? LocalizedError)?.errorDescription ?? "Không thể tạo tác vụ tải xuống" }
+            throw error
+        }
     }
 
     func retry(_ id: String) async {
         await ensureLoaded(); guard let item = items.first(where: { $0.id == id }), !item.isActive else { return }
         let tasks = await allTasks(); guard !tasks.contains(where: { $0.taskDescription == id && $0.state != .completed }) else { return }
         tombstones.remove(id); try? FileManager.default.removeItem(at: itemDirectory(id)); update(id) { $0.localManifestPath = ""; $0.error = ""; $0.progress = 0 }
-        do { try await start(id) } catch { update(id) { $0.state = .failed; $0.error = "Không thể tạo tác vụ tải xuống" } }
+        do { try await start(id) } catch { update(id) { $0.state = .failed; $0.error = (error as? LocalizedError)?.errorDescription ?? "Không thể tạo tác vụ tải xuống" } }
     }
 
     func cancel(_ id: String) async {
@@ -130,6 +135,7 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     private func allTasks() async -> [URLSessionTask] { await withCheckedContinuation { continuation in session.getAllTasks { continuation.resume(returning: $0) } } }
     private func start(_ id: String) async throws {
         guard let item = items.first(where: { $0.id == id }), let url = URL(string: item.sourceURL) else { throw OfflineError.unsupported }
+        try await validateDownloadSource(url)
         // Match Player transport: CineViet's HLS gateway rejects playlist, key and
         // segment requests without trusted app provenance. AVURLAsset propagates
         // these fields through the full asset-download resource graph.
@@ -141,6 +147,21 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         guard let task = session.makeAssetDownloadTask(asset: asset, assetTitle: "\(item.movieTitle) – \(item.episodeName)", assetArtworkData: nil, options: [AVAssetDownloadTaskMinimumRequiredMediaBitrateKey: 0]) else { throw OfflineError.cannotCreate }
         task.taskDescription = id; update(id) { $0.state = .downloading; $0.error = ""; $0.progress = 0; $0.taskIdentifier = task.taskIdentifier }; task.resume()
+    }
+    private func validateDownloadSource(_ url: URL) async throws {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        request.setValue(AppEnvironment.siteBaseURL.absoluteString, forHTTPHeaderField: "Origin")
+        request.setValue(AppEnvironment.siteBaseURL.appendingPathComponent("").absoluteString, forHTTPHeaderField: "Referer")
+        request.setValue(AppEnvironment.userAgent, forHTTPHeaderField: "User-Agent")
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: request) }
+        catch { throw OfflineError.sourceUnavailable }
+        guard let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode),
+              String(data: data.prefix(1024), encoding: .utf8)?.contains("#EXTM3U") == true else {
+            throw OfflineError.sourceUnavailable
+        }
     }
     private func reconcileTasks() async {
         let tasks = await allTasks(); var byID: [String: URLSessionTask] = [:]
@@ -196,7 +217,7 @@ extension OfflineDownloadManager: AVAssetDownloadDelegate {
     nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) { Task { @MainActor in self.backgroundEventsFinished = true; self.completeBackgroundEventsIfReady() } }
 }
 
-enum OfflineError: LocalizedError { case unsupported, cannotCreate; var errorDescription: String? { switch self { case .unsupported: "Nguồn này không hỗ trợ tải offline"; case .cannotCreate: "Không thể tạo tác vụ tải xuống" } } }
+enum OfflineError: LocalizedError { case unsupported, sourceUnavailable, cannotCreate; var errorDescription: String? { switch self { case .unsupported: "Nguồn này không hỗ trợ tải offline"; case .sourceUnavailable: "Nguồn phim không còn khả dụng. Vui lòng chọn server khác."; case .cannotCreate: "Không thể tạo tác vụ tải xuống" } } }
 private extension JSONEncoder { static var offline: JSONEncoder { let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; return e } }
 private extension JSONDecoder { static var offline: JSONDecoder { let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d } }
 private extension FileManager { func allocatedSizeOfDirectory(at url: URL) throws -> Int64 { let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileAllocatedSizeKey, .totalFileAllocatedSizeKey]; return try enumerator(at: url, includingPropertiesForKeys: Array(keys))?.compactMap { $0 as? URL }.reduce(0) { result, file in let v = try? file.resourceValues(forKeys: keys); return result + Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0) } ?? 0 } }
