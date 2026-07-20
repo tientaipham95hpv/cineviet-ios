@@ -393,6 +393,26 @@ private struct CatalogFilterSheet: View {
     @Binding var sort: String
     let apply: () -> Void
 
+    private static let genres: [(title: String, value: String)] = [
+        ("Tất cả", ""), ("Hành động", "hanh-dong"), ("Tình cảm", "tinh-cam"),
+        ("Hài hước", "hai-huoc"), ("Cổ trang", "co-trang"), ("Tâm lý", "tam-ly"),
+        ("Hình sự", "hinh-su"), ("Chiến tranh", "chien-tranh"), ("Thể thao", "the-thao"),
+        ("Võ thuật", "vo-thuat"), ("Viễn tưởng", "vien-tuong"), ("Phiêu lưu", "phieu-luu"),
+        ("Khoa học", "khoa-hoc"), ("Kinh dị", "kinh-di"), ("Âm nhạc", "am-nhac"),
+        ("Thần thoại", "than-thoai"), ("Tài liệu", "tai-lieu"), ("Gia đình", "gia-dinh"),
+        ("Chính kịch", "chinh-kich"), ("Bí ẩn", "bi-an"), ("Học đường", "hoc-duong")
+    ]
+
+    private static let countries: [(title: String, value: String)] = [
+        ("Tất cả", ""), ("Việt Nam", "viet-nam"), ("Trung Quốc", "trung-quoc"),
+        ("Hàn Quốc", "han-quoc"), ("Nhật Bản", "nhat-ban"), ("Thái Lan", "thai-lan"),
+        ("Âu Mỹ", "au-my"), ("Đài Loan", "dai-loan"), ("Hồng Kông", "hong-kong"),
+        ("Ấn Độ", "an-do"), ("Anh", "anh"), ("Pháp", "phap"), ("Canada", "canada"),
+        ("Đức", "duc"), ("Tây Ban Nha", "tay-ban-nha"), ("Úc", "uc")
+    ]
+
+    private static let years: [String] = Array((1970...Calendar.current.component(.year, from: Date())).reversed()).map(String.init)
+
     var body: some View {
         NavigationStack {
             Form {
@@ -400,9 +420,16 @@ private struct CatalogFilterSheet: View {
                     Picker("Loại phim", selection: $type) { Text("Tất cả").tag(""); Text("Phim bộ").tag("series"); Text("Phim lẻ").tag("single"); Text("Hoạt hình").tag("hoathinh") }
                 }
                 Section("Bộ lọc") {
-                    TextField("Thể loại", text: $genre)
-                    TextField("Quốc gia", text: $country)
-                    TextField("Năm phát hành", text: $year).keyboardType(.numberPad)
+                    Picker("Thể loại", selection: $genre) {
+                        ForEach(Self.genres, id: \.value) { option in Text(option.title).tag(option.value) }
+                    }
+                    Picker("Quốc gia", selection: $country) {
+                        ForEach(Self.countries, id: \.value) { option in Text(option.title).tag(option.value) }
+                    }
+                    Picker("Năm phát hành", selection: $year) {
+                        Text("Tất cả").tag("")
+                        ForEach(Self.years, id: \.self) { value in Text(value).tag(value) }
+                    }
                 }
                 Section("Sắp xếp") {
                     Picker("Sắp xếp", selection: $sort) {
