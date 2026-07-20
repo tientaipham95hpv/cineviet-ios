@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel: HomeViewModel
     let logout: () -> Void
     let watchHistoryService: WatchHistoryServicing
@@ -101,14 +102,16 @@ struct HomeView: View {
 
     private func featuredHero(_ movies: [Movie], width: CGFloat) -> some View {
         let safeIndex = min(featuredIndex, max(0, movies.count - 1))
+        let compact = usesPortraitHero(for: width)
+        let height = heroHeight(for: width, compact: compact)
         return VStack(spacing: 12) {
             TabView(selection: $featuredIndex) {
                 ForEach(Array(movies.enumerated()), id: \.element.id) { index, movie in
-                    heroSlide(movie, width: width).tag(index)
+                    heroSlide(movie, width: width, height: height, compact: compact).tag(index)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(width: width, height: min(510, max(430, width * 1.2)))
+            .frame(width: width, height: height)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: featuredIndex)
             if movies.count > 1 {
                 HStack(spacing: 6) {
@@ -122,38 +125,72 @@ struct HomeView: View {
         }
     }
 
-    private func heroSlide(_ movie: Movie, width: CGFloat) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: movie.backdropURL ?? movie.posterURL) { phase in
+    private func usesPortraitHero(for width: CGFloat) -> Bool {
+        horizontalSizeClass == .compact || width < 700
+    }
+
+    private func heroHeight(for width: CGFloat, compact: Bool) -> CGFloat {
+        compact ? min(560, max(470, width * 1.38)) : min(470, max(370, width * 0.46))
+    }
+
+    private func heroSlide(_ movie: Movie, width: CGFloat, height: CGFloat, compact: Bool) -> some View {
+        let imageURL = compact ? (movie.posterURL ?? movie.backdropURL) : (movie.backdropURL ?? movie.posterURL)
+        return ZStack(alignment: .bottomLeading) {
+            AsyncImage(url: imageURL) { phase in
                 if case .success(let image) = phase { image.resizable().scaledToFill() }
                 else { CineVietTheme.panel }
             }
-            .frame(width: max(0, width - 24), height: min(510, max(430, width * 1.2)))
+            .frame(width: max(0, width - 24), height: height)
             .clipped()
-            LinearGradient(colors: [.black.opacity(0.08), .black.opacity(0.2), CineVietTheme.background.opacity(0.98)], startPoint: .top, endPoint: .bottom)
-            LinearGradient(colors: [.black.opacity(0.72), .clear], startPoint: .leading, endPoint: .trailing)
-            VStack(alignment: .leading, spacing: 12) {
+            LinearGradient(
+                colors: compact
+                    ? [.black.opacity(0.02), .black.opacity(0.18), CineVietTheme.background.opacity(0.98)]
+                    : [.black.opacity(0.08), .black.opacity(0.22), CineVietTheme.background.opacity(0.94)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            LinearGradient(colors: [.black.opacity(compact ? 0.3 : 0.82), .clear], startPoint: .leading, endPoint: .trailing)
+            VStack(alignment: .leading, spacing: compact ? 10 : 12) {
                 Label("PHIM NỔI BẬT", systemImage: "flame.fill")
                     .font(.system(size: 11, weight: .black, design: .rounded)).tracking(1.1).foregroundStyle(CineVietTheme.accent)
-                Text(movie.title).font(.system(size: 30, weight: .black, design: .rounded)).lineLimit(2)
+                Text(movie.title)
+                    .font(.system(size: compact ? 28 : 34, weight: .black, design: .rounded))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
                 featuredMetadata(movie)
                 if let description = movie.description.nonEmpty {
-                    Text(description).font(.system(size: 14, weight: .regular, design: .rounded)).foregroundStyle(.white.opacity(0.78)).lineLimit(3).lineSpacing(3)
+                    Text(description)
+                        .font(.system(size: 14, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .lineLimit(compact ? 2 : 3)
+                        .lineSpacing(3)
                 }
-                HStack(spacing: 10) {
-                    Button { viewModel.selectedMovie = movie } label: { Label("Xem ngay", systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 48) }
-                        .buttonStyle(HeroCTAStyle(primary: true))
-                    Button { viewModel.selectedMovie = movie } label: { Label("Chi tiết", systemImage: "info.circle").frame(maxWidth: .infinity, minHeight: 48) }
-                        .buttonStyle(HeroCTAStyle(primary: false))
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { heroButtons(for: movie) }
+                    VStack(spacing: 9) { heroButtons(for: movie) }
                 }
             }
-            .padding(20)
+            .frame(maxWidth: compact ? .infinity : min(520, width * 0.58), alignment: .leading)
+            .padding(compact ? 18 : 24)
         }
-        .frame(width: max(0, width - 24))
+        .frame(width: max(0, width - 24), height: height)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.12)) }
         .shadow(color: .black.opacity(0.42), radius: 24, y: 14)
         .padding(.horizontal, 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Phim nổi bật: \(movie.title)")
+    }
+
+    @ViewBuilder private func heroButtons(for movie: Movie) -> some View {
+        Button { viewModel.selectedMovie = movie } label: {
+            Label("Xem ngay", systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 48)
+        }
+        .buttonStyle(HeroCTAStyle(primary: true))
+        Button { viewModel.selectedMovie = movie } label: {
+            Label("Chi tiết", systemImage: "info.circle").frame(maxWidth: .infinity, minHeight: 48)
+        }
+        .buttonStyle(HeroCTAStyle(primary: false))
     }
 
     private func featuredMetadata(_ movie: Movie) -> some View {
