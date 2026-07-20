@@ -53,9 +53,10 @@ struct ShortDramaView: View {
 
     private var grid: some View {
         GeometryReader { proxy in
-            let minimum = proxy.size.width >= 700 ? 170.0 : 138.0
+            let spacing = proxy.size.width >= 700 ? 18.0 : 12.0
+            let minimum = proxy.size.width >= 700 ? 180.0 : 154.0
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum, maximum: 210), spacing: 14)], spacing: 18) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum, maximum: 230), spacing: spacing)], spacing: 22) {
                     ForEach(viewModel.movies) { movie in
                         NavigationLink {
                             ShortDramaViewer(movie: movie, movieService: movieService)
@@ -104,21 +105,63 @@ struct ShortDramaView: View {
 
 private struct ShortDramaCard: View {
     let movie: Movie
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            AsyncImage(url: movie.posterURL) { phase in
-                if case let .success(image) = phase { image.resizable().scaledToFill() }
-                else { ZStack { CineVietTheme.panel; Image(systemName: "play.rectangle.fill").font(.title).foregroundStyle(CineVietTheme.textMuted); if case .empty = phase { ProgressView().tint(CineVietTheme.accent) } } }
+        VStack(alignment: .leading, spacing: 9) {
+            ZStack(alignment: .bottom) {
+                AsyncImage(url: movie.posterURL) { phase in
+                    if case let .success(image) = phase { image.resizable().scaledToFill() }
+                    else {
+                        ZStack {
+                            CineVietTheme.panel
+                            Image(systemName: "play.rectangle.fill").font(.title).foregroundStyle(CineVietTheme.textMuted)
+                            if case .empty = phase { ProgressView().tint(CineVietTheme.accent) }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(2 / 3, contentMode: .fill)
+                .clipped()
+
+                LinearGradient(colors: [.clear, .black.opacity(0.72)], startPoint: .center, endPoint: .bottom)
+                    .frame(height: 74)
+                    .allowsHitTesting(false)
+
+                HStack(alignment: .bottom, spacing: 6) {
+                    Label("Short", systemImage: "play.fill")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(CineVietTheme.accent, in: Capsule())
+                    Spacer(minLength: 4)
+                    if !movie.episodeCurrent.isEmpty {
+                        Text(movie.episodeCurrent)
+                            .font(.caption2.bold()).lineLimit(1)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(.black.opacity(0.72), in: Capsule())
+                    }
+                }
+                .foregroundStyle(.white)
+                .padding(9)
             }
-            .aspectRatio(2 / 3, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(alignment: .bottomLeading) {
-                if !movie.episodeCurrent.isEmpty { Text(movie.episodeCurrent).font(.caption2.bold()).padding(.horizontal, 7).padding(.vertical, 4).background(.black.opacity(0.75), in: Capsule()).padding(8) }
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(.white.opacity(0.09), lineWidth: 1)
             }
-            Text(movie.title).font(.subheadline.weight(.semibold)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-            if !movie.metadataLine.isEmpty { Text(movie.metadataLine).font(.caption).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }
+            .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+
+            Text(movie.title)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
+
+            if !movie.metadataLine.isEmpty {
+                Text(movie.metadataLine)
+                    .font(.caption)
+                    .foregroundStyle(CineVietTheme.textMuted)
+                    .lineLimit(1)
+            }
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
@@ -166,6 +209,22 @@ struct ShortDramaViewer: View {
                 }.foregroundStyle(.white)
             } else { verticalPages }
         }
+        .overlay(alignment: .topLeading) {
+            Button(action: closeViewer) {
+                Image(systemName: "chevron.left")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(.black.opacity(0.58), in: Circle())
+                    .overlay { Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1) }
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 16)
+            .padding(.top, 8)
+            .contentShape(Circle())
+            .zIndex(100)
+            .accessibilityLabel("Quay lại")
+        }
         .toolbar(.hidden, for: .navigationBar)
         .hidesFloatingNavigation()
         .task { await viewModel.load() }
@@ -181,7 +240,7 @@ struct ShortDramaViewer: View {
                     // render tree. Controllers outside this window never own
                     // an AVPlayer, even when a title has up to 100 episodes.
                     if abs(index - page) <= 1 {
-                        ShortEpisodeView(movie: viewModel.movie!, episode: episode, index: index, total: viewModel.episodes.count, isActive: page == index, dismiss: { dismiss() })
+                        ShortEpisodeView(movie: viewModel.movie!, episode: episode, index: index, total: viewModel.episodes.count, isActive: page == index)
                             .frame(width: geometry.size.width, height: geometry.size.height)
                             .offset(y: CGFloat(index - page) * geometry.size.height + verticalDrag)
                     }
@@ -221,6 +280,8 @@ struct ShortDramaViewer: View {
         withAnimation(.interactiveSpring(response: 0.32, dampingFraction: 0.88)) { page = target }
     }
 
+    private func closeViewer() { dismiss() }
+
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle.fill").font(.largeTitle)
@@ -256,20 +317,18 @@ private struct ShortEpisodeView: View {
     let index: Int
     let total: Int
     let isActive: Bool
-    let dismiss: () -> Void
     @StateObject private var controller: ShortEpisodeController
     @State private var controlsVisible = true
     @State private var seekFeedback: Int?
     @State private var hideTask: Task<Void, Never>?
     @State private var feedbackTask: Task<Void, Never>?
 
-    init(movie: Movie, episode: EpisodeItem, index: Int, total: Int, isActive: Bool, dismiss: @escaping () -> Void) {
+    init(movie: Movie, episode: EpisodeItem, index: Int, total: Int, isActive: Bool) {
         self.movie = movie
         self.episode = episode
         self.index = index
         self.total = total
         self.isActive = isActive
-        self.dismiss = dismiss
         _controller = StateObject(wrappedValue: ShortEpisodeController(episode: episode))
     }
 
@@ -356,14 +415,6 @@ private struct ShortEpisodeView: View {
 
     private var controls: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button(action: dismiss) {
-                    Image(systemName: "chevron.left").font(.headline).frame(width: 44, height: 44)
-                        .background(.black.opacity(0.5), in: Circle())
-                }
-                .accessibilityLabel("Quay lại")
-                Spacer()
-            }
             Spacer(minLength: 24)
             VStack(alignment: .leading, spacing: 7) {
                 Text(movie.title).font(.title3.weight(.heavy)).lineLimit(2).minimumScaleFactor(0.8)
