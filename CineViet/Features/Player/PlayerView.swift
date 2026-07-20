@@ -8,6 +8,7 @@ enum PlayerPanel: String, Identifiable {
 
 struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: PlayerViewModel
     @State private var controlsVisible = true
     @State private var controlsLocked = false
@@ -49,6 +50,14 @@ struct PlayerView: View {
             OrientationManager.portrait()
             NotificationCenter.default.post(name: .cineVietPlayerDidDisappear, object: nil)
         }
+        .onChange(of: scenePhase) { phase in
+            switch phase {
+            case .background: viewModel.applicationDidEnterBackground()
+            case .inactive: viewModel.flushProgress()
+            case .active: viewModel.applicationWillEnterForeground()
+            @unknown default: break
+            }
+        }
     }
 
     private var tapSurface: some View {
@@ -71,6 +80,8 @@ struct PlayerView: View {
                 bottomControls
             }
             .padding(.horizontal, 22).padding(.vertical, 14)
+            .safeAreaPadding(.horizontal, 8)
+            .safeAreaPadding(.vertical, 4)
             lockButton(locked: false)
         }
         .contentShape(Rectangle())
@@ -127,6 +138,9 @@ struct PlayerView: View {
                 if editing { scrubPosition = viewModel.playbackPosition; hideTask?.cancel() }
                 else { viewModel.seek(to: scrubPosition); revealControls() }
             }).tint(CineVietTheme.accent)
+                .accessibilityLabel("Tiến độ phát")
+                .accessibilityValue("\(time(isScrubbing ? scrubPosition : viewModel.playbackPosition)) trên \(time(viewModel.playbackDuration))")
+                .accessibilityHint("Vuốt lên hoặc xuống để tua phim")
             HStack {
                 Text(time(isScrubbing ? scrubPosition : viewModel.playbackPosition))
                 Spacer()

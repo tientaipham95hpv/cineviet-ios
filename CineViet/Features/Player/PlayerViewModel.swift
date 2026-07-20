@@ -66,6 +66,8 @@ final class PlayerViewModel: ObservableObject {
     private var subtitleTimeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
     private var itemFailureObserver: NSObjectProtocol?
+    private var audioInterruptionObserver: NSObjectProtocol?
+    private var audioRouteObserver: NSObjectProtocol?
     private var subtitleTask: Task<Void, Never>?
     private var resumeTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
@@ -88,12 +90,11 @@ final class PlayerViewModel: ObservableObject {
         self.movie = movie
         self.defaults = defaults
         self.watchHistoryService = watchHistoryService
-        let preferredServer = defaults.string(forKey: "cineviet.player.server.\(movie.id)")
-        let restoredServer = movie.episodes.first(where: { $0.name == preferredServer }) ?? server
-        let preferredEpisode = defaults.string(forKey: "cineviet.player.episode.\(movie.id)")
-        currentServer = restoredServer
-        currentEpisode = restoredServer.items.first(where: { $0.id == preferredEpisode })
-            ?? restoredServer.items.first(where: { Self.sameEpisode($0, episode) }) ?? episode
+        // The launch contract is authoritative: an episode tapped in Detail or
+        // resolved from Continue Watching must not be replaced by stale local
+        // preferences from a previous session.
+        currentServer = server
+        currentEpisode = server.items.first(where: { Self.sameEpisode($0, episode) }) ?? episode
         selectedAudioKey = defaults.string(forKey: "cineviet.player.audio.\(movie.id)")
         selectedSubtitleLanguage = defaults.string(forKey: "cineviet.player.subtitle.\(movie.id)") ?? "vi"
         let subtitleStyleKey = "cineviet.player.subtitle.style.\(movie.id)"
@@ -117,6 +118,8 @@ final class PlayerViewModel: ObservableObject {
         if let subtitleTimeObserver { player.removeTimeObserver(subtitleTimeObserver) }
         if let playbackEndObserver { NotificationCenter.default.removeObserver(playbackEndObserver) }
         if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver) }
+        if let audioInterruptionObserver { NotificationCenter.default.removeObserver(audioInterruptionObserver) }
+        if let audioRouteObserver { NotificationCenter.default.removeObserver(audioRouteObserver) }
     }
 
     func start() {
@@ -128,12 +131,26 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func stop() {
-        saveProgress(force: true)
+        flushProgress()
         player.pause()
         started = false
         cancelAsyncWork()
         removePlayerObservers()
+        deactivateAudioSession()
     }
+
+    func applicationDidEnterBackground() {
+        flushProgress()
+        // Playback may continue only through an active system PiP session.
+        // Otherwise pausing avoids invisible audio/video playback.
+        if !player.isExternalPlaybackActive { player.pause() }
+    }
+
+    func applicationWillEnterForeground() {
+        configureAudioSession()
+    }
+
+    func flushProgress() { saveProgress(force: true) }
 
     func togglePlayback() {
         autoNextTask?.cancel(); autoNextCountdown = nil
@@ -314,6 +331,12 @@ final class PlayerViewModel: ObservableObject {
             self.isPlaying = self.player.rate > 0
         }
         historyObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 10, preferredTimescale: 1), queue: .main) { [weak self] _ in self?.saveProgress(force: false) }
+        audioInterruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(), queue: .main) { [weak self] note in
+            Task { @MainActor in self?.handleAudioInterruption(note) }
+        }
+        audioRouteObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: AVAudioSession.sharedInstance(), queue: .main) { [weak self] note in
+            Task { @MainActor in self?.handleAudioRouteChange(note) }
+        }
         playbackEndObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             Task { @MainActor in
                 guard let self, note.object as? AVPlayerItem === self.player.currentItem else { return }
@@ -330,6 +353,8 @@ final class PlayerViewModel: ObservableObject {
         if let subtitleTimeObserver { player.removeTimeObserver(subtitleTimeObserver); self.subtitleTimeObserver = nil }
         if let playbackEndObserver { NotificationCenter.default.removeObserver(playbackEndObserver); self.playbackEndObserver = nil }
         if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver); self.itemFailureObserver = nil }
+        if let audioInterruptionObserver { NotificationCenter.default.removeObserver(audioInterruptionObserver); self.audioInterruptionObserver = nil }
+        if let audioRouteObserver { NotificationCenter.default.removeObserver(audioRouteObserver); self.audioRouteObserver = nil }
     }
 
     private func resumePlaybackIfNeeded(for candidate: PlaybackCandidate) {
@@ -373,7 +398,9 @@ final class PlayerViewModel: ObservableObject {
     private func saveProgress(force: Bool) {
         guard let item = player.currentItem else { return }
         let position = player.currentTime().seconds, duration = item.duration.seconds
-        guard position.isFinite, duration.isFinite, position >= 3, force || abs(position - lastSavedPosition) >= 5 else { return }
+        guard position.isFinite, duration.isFinite, position >= 3 else { return }
+        let delta = abs(position - lastSavedPosition)
+        guard delta >= (force ? 0.75 : 5) else { return }
         lastSavedPosition = position
         let index = movie.episodes.firstIndex(where: { $0.name == currentServer.name }) ?? 0
         let service = watchHistoryService, movie = movie, server = currentServer, episode = currentEpisode
@@ -439,7 +466,27 @@ final class PlayerViewModel: ObservableObject {
         return episode.audioSources.contains(where: { $0.key == stored }) ? stored : nil
     }
     private func cancelAsyncWork() { subtitleTask?.cancel(); resumeTask?.cancel(); noticeTask?.cancel(); autoNextTask?.cancel() }
-    private func configureAudioSession() { try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback); try? AVAudioSession.sharedInstance().setActive(true) }
+    private func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .moviePlayback)
+        try? session.setActive(true)
+    }
+    private func deactivateAudioSession() { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
+    private func handleAudioInterruption(_ notification: Notification) {
+        guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        if type == .began {
+            flushProgress(); player.pause(); showNotice("Phát phim đã tạm dừng do gián đoạn âm thanh")
+        } else if let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt,
+                  AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume) {
+            configureAudioSession(); player.play()
+        }
+    }
+    private func handleAudioRouteChange(_ notification: Notification) {
+        guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable else { return }
+        player.pause(); flushProgress(); showNotice("Đã tạm dừng vì thiết bị âm thanh bị ngắt kết nối")
+    }
 
     static func directMediaURL(for episode: EpisodeItem, audioKey: String? = nil) -> URL? { urls(for: episode, audioKey: audioKey).first }
     static func urls(for episode: EpisodeItem, audioKey: String?) -> [URL] { urlSources(for: episode, audioKey: audioKey).map(\.url) }
