@@ -245,36 +245,35 @@ private struct ShortEpisodeView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let viewport = shortViewportSize(in: proxy.size)
             ZStack {
-                Color.black.ignoresSafeArea()
-                ZStack {
-                    AsyncImage(url: movie.posterURL) { phase in
-                        if case let .success(image) = phase { image.resizable().scaledToFill() }
-                        else { Color.black }
-                    }
-
-                    if let player = controller.player {
-                        ShortCoverPlayerView(player: player)
-                            .accessibilityHidden(true)
-                    }
-
-                    LinearGradient(colors: [.black.opacity(0.55), .clear, .black.opacity(0.88)], startPoint: .top, endPoint: .bottom)
-                        .opacity(controlsVisible ? 1 : 0)
-                        .animation(.easeOut(duration: 0.22), value: controlsVisible)
-                        .allowsHitTesting(false)
-
-                    centeredStatus
-                    if controller.isFastForwarding { speedChip }
-                    if let seekFeedback { seekFeedbackView(seekFeedback) }
-                    controls
+                AsyncImage(url: movie.posterURL) { phase in
+                    if case let .success(image) = phase { image.resizable().scaledToFill() }
+                    else { Color.black }
                 }
-                .frame(width: viewport.width, height: viewport.height)
+                .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
-                .contentShape(Rectangle())
-                .gesture(tapGesture(viewWidth: viewport.width))
+
+                if let player = controller.player {
+                    ShortCoverPlayerView(player: player)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                        .accessibilityHidden(true)
+                }
+
+                LinearGradient(colors: [.black.opacity(0.55), .clear, .black.opacity(0.88)], startPoint: .top, endPoint: .bottom)
+                    .opacity(controlsVisible ? 1 : 0)
+                    .animation(.easeOut(duration: 0.22), value: controlsVisible)
+                    .allowsHitTesting(false)
+
+                centeredStatus
+                if controller.isFastForwarding { speedChip }
+                if let seekFeedback { seekFeedbackView(seekFeedback) }
+                controls
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+            .contentShape(Rectangle())
+            .gesture(tapGesture(viewWidth: proxy.size.width))
         }
         .ignoresSafeArea()
         .contentShape(Rectangle())
@@ -303,11 +302,6 @@ private struct ShortEpisodeView: View {
         .accessibilityAction(named: controller.isPlaying ? "Tạm dừng" : "Phát") { togglePlayback() }
         .accessibilityAction(named: "Tua lùi 5 giây") { seek(-5) }
         .accessibilityAction(named: "Tua tới 5 giây") { seek(5) }
-    }
-
-    private func shortViewportSize(in available: CGSize) -> CGSize {
-        let width = min(available.width, available.height * 9 / 16)
-        return CGSize(width: width, height: width * 16 / 9)
     }
 
     @ViewBuilder private var centeredStatus: some View {
