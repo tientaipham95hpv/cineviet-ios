@@ -53,20 +53,24 @@ struct ShortDramaView: View {
 
     private var grid: some View {
         GeometryReader { proxy in
+            let horizontalPadding = 16.0
             let spacing = proxy.size.width >= 700 ? 18.0 : 12.0
-            let minimum = proxy.size.width >= 700 ? 180.0 : 154.0
+            let columnCount = proxy.size.width >= 900 ? 5 : (proxy.size.width >= 700 ? 4 : (proxy.size.width >= 500 ? 3 : 2))
+            let availableWidth = proxy.size.width - (horizontalPadding * 2) - (spacing * CGFloat(columnCount - 1))
+            let cardWidth = floor(availableWidth / CGFloat(columnCount))
+            let columns = Array(repeating: GridItem(.fixed(cardWidth), spacing: spacing, alignment: .top), count: columnCount)
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum, maximum: 230), spacing: spacing)], spacing: 22) {
+                LazyVGrid(columns: columns, alignment: .center, spacing: 22) {
                     ForEach(viewModel.movies) { movie in
                         NavigationLink {
                             ShortDramaViewer(movie: movie, movieService: movieService)
                         } label: {
-                            ShortDramaCard(movie: movie)
+                            ShortDramaCard(movie: movie, width: cardWidth)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, horizontalPadding)
                 .padding(.top, 8)
                 .padding(.bottom, 105)
             }
@@ -105,9 +109,10 @@ struct ShortDramaView: View {
 
 private struct ShortDramaCard: View {
     let movie: Movie
+    let width: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .bottom) {
                 AsyncImage(url: movie.posterURL) { phase in
                     if case let .success(image) = phase { image.resizable().scaledToFill() }
@@ -119,8 +124,7 @@ private struct ShortDramaCard: View {
                         }
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(2 / 3, contentMode: .fill)
+                .frame(width: width, height: width * 1.5)
                 .clipped()
 
                 LinearGradient(colors: [.clear, .black.opacity(0.72)], startPoint: .center, endPoint: .bottom)
@@ -143,9 +147,10 @@ private struct ShortDramaCard: View {
                 .foregroundStyle(.white)
                 .padding(9)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(width: width, height: width * 1.5)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(.white.opacity(0.09), lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
@@ -156,13 +161,13 @@ private struct ShortDramaCard: View {
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
 
-            if !movie.metadataLine.isEmpty {
-                Text(movie.metadataLine)
-                    .font(.caption)
-                    .foregroundStyle(CineVietTheme.textMuted)
-                    .lineLimit(1)
-            }
+            Text(movie.metadataLine.isEmpty ? " " : movie.metadataLine)
+                .font(.caption)
+                .foregroundStyle(CineVietTheme.textMuted)
+                .lineLimit(1)
+                .frame(height: 16, alignment: .topLeading)
         }
+        .frame(width: width, alignment: .topLeading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel([movie.title, movie.episodeCurrent].filter { !$0.isEmpty }.joined(separator: ", "))
