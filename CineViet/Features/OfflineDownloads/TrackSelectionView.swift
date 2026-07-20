@@ -20,11 +20,15 @@ struct TrackSelectionView: View {
         NavigationStack {
             Form {
                 if !audio.isEmpty {
-                    Section("Audio tải về") {
+                    Section {
                         ForEach(audio) { track in toggleRow(track.label, selected: selection.audioKeys.contains(track.key)) {
                             toggle(track.key, in: &selection.audioKeys)
                         } }
-                    } footer: { Text("Server song ngữ có thể tải nhiều bản âm thanh. Bỏ chọn track không cần để tiết kiệm dung lượng.") }
+                    } header: {
+                        Text("Audio tải về")
+                    } footer: {
+                        Text("Server song ngữ có thể tải nhiều bản âm thanh. Bỏ chọn track không cần để tiết kiệm dung lượng.")
+                    }
                 }
                 if !subtitles.isEmpty {
                     Section("Phụ đề tải về") {
