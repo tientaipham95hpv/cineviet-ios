@@ -81,7 +81,6 @@ final class WatchTogetherService: ObservableObject {
                 guard let first = data.first as? [String: Any] else { finish(.failure(WatchTogetherError.message("Kết nối quá thời gian"))); return }
                 finish(.success(first))
             } }
-            socket.on(clientEvent: .connectError) { _, _ in finish(.failure(WatchTogetherError.message("Không kết nối được Xem chung"))) }
             socket.on(clientEvent: .error) { _, _ in finish(.failure(WatchTogetherError.message("Không kết nối được Xem chung"))) }
             socket.connect(timeoutAfter: timeout) { finish(.failure(WatchTogetherError.message("Kết nối quá thời gian"))) }
         }
