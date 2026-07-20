@@ -381,7 +381,7 @@ private struct SkeletonBlock: View {
     var width: CGFloat? = nil
     var height: CGFloat
     var radius: CGFloat = 12
-    var body: some View { RoundedRectangle(cornerRadius: radius, style: .continuous).fill(CineVietTheme.panel).frame(width: width, height: height).overlay { RoundedRectangle(cornerRadius: radius).fill(.white.opacity(0.025)) }.redacted(reason: .placeholder) }
+    var body: some View { RoundedRectangle(cornerRadius: radius, style: .continuous).fill(CineVietTheme.panel).frame(width: width, height: height).overlay { RoundedRectangle(cornerRadius: radius).stroke(CineVietTheme.border.opacity(0.45)) }.redacted(reason: .placeholder) }
 }
 
 private struct HomeFailureView: View {

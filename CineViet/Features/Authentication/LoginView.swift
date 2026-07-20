@@ -27,7 +27,7 @@ struct LoginView: View {
             .padding(.vertical, 48)
             .frame(maxWidth: .infinity)
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(CineVietTheme.background.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
     }
 
@@ -38,7 +38,7 @@ struct LoginView: View {
                 .foregroundStyle(CineVietTheme.accent)
             Text("Đăng nhập để tiếp tục xem phim")
                 .font(.headline)
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(CineVietTheme.textMuted)
         }
     }
 
@@ -94,7 +94,11 @@ private struct CineVietTextFieldStyle: TextFieldStyle {
         configuration
             .padding(.horizontal, 14)
             .padding(.vertical, 14)
-            .foregroundStyle(.white)
-            .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(.primary)
+            .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(CineVietTheme.border, lineWidth: 0.8)
+            }
     }
 }

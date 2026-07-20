@@ -408,8 +408,8 @@ private struct RatingSheet: View {
                         }
                     }
                     .padding(18)
-                    .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay { RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.08)) }
+                    .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(CineVietTheme.border) }
                     if viewModel.isSubmitting {
                         Label("Đang lưu đánh giá…", systemImage: "arrow.triangle.2.circlepath")
                             .font(.subheadline.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted)
@@ -441,7 +441,7 @@ private struct RatingSheet: View {
             }.padding(.vertical, 22)
         }
         .frame(minHeight: 190).clipped()
-        .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.10)) }
+        .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(CineVietTheme.border) }
         .accessibilityElement(children: .combine)
     }
 
@@ -507,11 +507,11 @@ private struct CommentsSheet: View {
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Viết bình luận…", text: $text, axis: .vertical)
                     .focused($composerFocused).lineLimit(1...4).padding(.horizontal, 14).padding(.vertical, 12)
-                    .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(composerFocused ? CineVietTheme.accent.opacity(0.65) : .white.opacity(0.08)) }
+                    .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(composerFocused ? CineVietTheme.accent.opacity(0.65) : CineVietTheme.border) }
                 Button { Task { if await viewModel.addComment(text, spoiler: spoiler) { text = ""; spoiler = false; composerFocused = false } } } label: {
                     ZStack {
-                        Circle().fill(cleanText.count >= 2 ? CineVietTheme.accent : .white.opacity(0.10))
+                        Circle().fill(cleanText.count >= 2 ? CineVietTheme.accent : CineVietTheme.secondaryBackground)
                         if viewModel.isSubmitting { ProgressView().tint(.black) } else { Image(systemName: "paperplane.fill").font(.system(size: 17, weight: .bold)).foregroundStyle(cleanText.count >= 2 ? .black : CineVietTheme.textMuted) }
                     }.frame(width: 50, height: 50)
                 }

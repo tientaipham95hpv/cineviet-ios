@@ -20,9 +20,9 @@ struct SessionRootView: View {
             case .restoring:
                 ProgressView("Đang khôi phục phiên đăng nhập…")
                     .tint(CineVietTheme.accent)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black)
+                    .background(CineVietTheme.background)
             case .signedOut:
                 LoginView(viewModel: viewModel)
             case .signedIn(let user):
