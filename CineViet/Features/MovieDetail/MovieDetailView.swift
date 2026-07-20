@@ -113,7 +113,7 @@ struct MovieDetailView: View {
             .background(
                 RoundedRectangle(cornerRadius: 30, style: .continuous)
                     .fill(CineVietTheme.secondaryBackground.opacity(0.96))
-                    .overlay { RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(.white.opacity(0.07)) }
+                    .overlay { RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(CineVietTheme.border.opacity(0.65)) }
             )
             .frame(width: width, alignment: .center)
             // Negative layout padding creates the intended hero overlap without
@@ -260,7 +260,7 @@ struct MovieDetailView: View {
             else { ZStack { CineVietTheme.panel; Image(systemName: "film").foregroundStyle(CineVietTheme.textMuted) } }
         }
         .frame(width: width, height: width * 1.46).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.22)) }
+        .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(CineVietTheme.border.opacity(0.8)) }
         .shadow(color: .black.opacity(0.38), radius: 18, y: 8).accessibilityHidden(true)
     }
 
@@ -293,7 +293,8 @@ struct MovieDetailView: View {
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 10)
-            .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(CineVietTheme.panel.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(CineVietTheme.border.opacity(0.65), lineWidth: 0.8) }
         }.padding(.horizontal, 18)
     }
 
@@ -304,10 +305,10 @@ struct MovieDetailView: View {
     private func actionLabel(_ icon: String, _ text: String, accent: Color) -> some View {
         VStack(spacing: 7) {
             Image(systemName: icon).font(.system(size: 20, weight: .semibold)).foregroundStyle(accent).frame(height: 28)
-            Text(text).font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(.white.opacity(0.88)).lineLimit(1).minimumScaleFactor(0.62)
+            Text(text).font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.62)
         }.frame(maxWidth: .infinity, minHeight: 68).contentShape(Rectangle())
     }
-    private func sectionHeading(_ title: String, icon: String) -> some View { Label(title, systemImage: icon).font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.white) }
+    private func sectionHeading(_ title: String, icon: String) -> some View { Label(title, systemImage: icon).font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.primary) }
     private func canonicalURL(_ movie: Movie) -> URL { AppEnvironment.siteBaseURL.appendingPathComponent("movie").appendingPathComponent(movie.routeKey) }
 
     @ViewBuilder private func tabs(_ movie: Movie) -> some View {
@@ -348,10 +349,10 @@ private struct DetailCTAStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline.bold())
-            .foregroundStyle(primary ? .black : .white)
+            .foregroundStyle(primary ? Color.black : Color.primary)
             .background(primary ? LinearGradient(colors: [CineVietTheme.accent, CineVietTheme.accent.opacity(0.82)], startPoint: .topLeading, endPoint: .bottomTrailing) : LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(primary ? .white.opacity(0.16) : .white.opacity(0.13), lineWidth: 0.8) }
-            .shadow(color: primary ? CineVietTheme.accent.opacity(0.18) : .black.opacity(0.2), radius: configuration.isPressed ? 4 : 10, y: configuration.isPressed ? 2 : 5)
+            .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(primary ? CineVietTheme.accentDeep.opacity(0.28) : CineVietTheme.border, lineWidth: 0.8) }
+            .shadow(color: primary ? CineVietTheme.accent.opacity(0.16) : Color.black.opacity(0.09), radius: configuration.isPressed ? 3 : 7, y: configuration.isPressed ? 1 : 3)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
@@ -363,7 +364,7 @@ private struct DetailActionStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .scaleEffect(configuration.isPressed ? 0.92 : 1)
             .opacity(isEnabled ? (configuration.isPressed ? 0.58 : 1) : 0.42)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
@@ -416,7 +417,7 @@ private struct RatingSheet: View {
                     }
                 }.padding(20)
             }
-            .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
+            .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.primary)
             .navigationTitle("Đánh giá phim").navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Đóng") { dismiss() }.frame(minHeight: 44) }
         }.presentationDetents([.medium, .large])
@@ -432,7 +433,7 @@ private struct RatingSheet: View {
                 if let stats = viewModel.ratingStats {
                     Text(String(format: "%0.1f", stats.average)).font(.system(size: 50, weight: .heavy, design: .rounded))
                     Text("trên 10").font(.caption.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted)
-                    if stats.total > 0 { Text("\(stats.total) lượt đánh giá").font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.82)) }
+                    if stats.total > 0 { Text("\(stats.total) lượt đánh giá").font(.subheadline.weight(.medium)).foregroundStyle(.primary.opacity(0.82)) }
                 } else {
                     Text("Chấm điểm phim").font(.title2.bold())
                     Text("Chia sẻ cảm nhận của bạn").font(.subheadline).foregroundStyle(CineVietTheme.textMuted)
@@ -451,10 +452,10 @@ private struct RatingSheet: View {
                 Image(systemName: isChoice ? "star.fill" : "star").font(.system(size: 16, weight: .bold))
                 Text("\(value)").font(.system(size: 15, weight: .bold, design: .rounded))
             }
-            .foregroundStyle(isChoice ? .black : .white)
+            .foregroundStyle(isChoice ? Color.black : Color.primary)
             .frame(maxWidth: .infinity, minHeight: 58)
-            .background(isChoice ? AnyShapeStyle(LinearGradient(colors: [.yellow, .orange.opacity(0.85)], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(.white.opacity(0.065)), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(isChoice ? .white.opacity(0.32) : .white.opacity(0.08)) }
+            .background(isChoice ? AnyShapeStyle(LinearGradient(colors: [.yellow, .orange.opacity(0.85)], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(CineVietTheme.panel), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(isChoice ? Color.orange.opacity(0.38) : CineVietTheme.border) }
             .scaleEffect(isChoice && !reduceMotion ? 1.03 : 1)
         }
         .buttonStyle(EpisodeButtonStyle()).disabled(viewModel.isSubmitting)
@@ -489,7 +490,7 @@ private struct CommentsSheet: View {
             .scrollDismissesKeyboard(.interactively)
             .overlay { if viewModel.isSocialLoading { ProgressView().tint(CineVietTheme.accent).padding(20).background(.ultraThinMaterial, in: Circle()) } }
             .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-            .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.white)
+            .background(CineVietTheme.background.ignoresSafeArea()).foregroundStyle(.primary)
             .navigationTitle("Bình luận").navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Đóng") { dismiss() }.frame(minHeight: 44) }
         }.presentationDetents([.medium, .large])
@@ -539,12 +540,12 @@ private struct CommentsSheet: View {
                         .font(.caption.weight(.semibold)).foregroundStyle(.orange)
                         .padding(.horizontal, 9).frame(minHeight: 26).background(.orange.opacity(0.12), in: Capsule())
                 }
-                Text(item.content).font(.body).foregroundStyle(.white.opacity(0.92)).fixedSize(horizontal: false, vertical: true)
+                Text(item.content).font(.body).foregroundStyle(.primary.opacity(0.92)).fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(15).frame(maxWidth: .infinity, alignment: .leading)
-        .background(LinearGradient(colors: [.white.opacity(0.065), CineVietTheme.panel.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.075)) }
+        .background(LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(CineVietTheme.border.opacity(0.75)) }
         .accessibilityElement(children: .combine)
     }
 }
