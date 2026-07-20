@@ -19,9 +19,8 @@ struct MainTabView: View {
             HomeView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService, logout: logout).tag(0)
             SearchView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(1)
             ShortDramaView(movieService: movieService).tag(2)
-            WatchTogetherView(service: watchTogetherService, watchHistoryService: watchHistoryService).tag(3)
-            LibraryView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(4)
-            AccountView(user: user, service: authenticationService, notificationService: notificationService, watchHistoryService: watchHistoryService, updateUser: updateUser, logout: logout).tag(5)
+            LibraryView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(3)
+            AccountView(user: user, service: authenticationService, notificationService: notificationService, watchHistoryService: watchHistoryService, updateUser: updateUser, logout: logout).tag(4)
         }
         .toolbar(.hidden, for: .tabBar)
         // The floating bar is visual chrome, not layout content. Using a
@@ -60,9 +59,8 @@ struct MainTabView: View {
             navItem(0, "house.fill", "Trang chủ")
             navItem(1, "magnifyingglass", "Tìm kiếm")
             navItem(2, "play.rectangle.fill", "Short")
-            navItem(3, "person.2.fill", "Xem chung")
-            navItem(4, "books.vertical.fill", "Thư viện")
-            navItem(5, "person.fill", "Tài khoản")
+            navItem(3, "books.vertical.fill", "Thư viện")
+            navItem(4, "person.fill", "Tài khoản")
         }
         .padding(7)
         .background(.ultraThinMaterial, in: Capsule())
