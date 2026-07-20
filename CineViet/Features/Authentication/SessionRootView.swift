@@ -121,34 +121,13 @@ private struct CineVietLoadingView: View {
     }
 
     private var brandLockup: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().stroke(CineVietTheme.accent.opacity(0.32), lineWidth: 5)
-                    Circle().trim(from: 0.08, to: 0.82)
-                        .stroke(CineVietTheme.accent, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                        .rotationEffect(.degrees(-28))
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 22, weight: .black))
-                        .foregroundStyle(CineVietTheme.accent)
-                        .offset(x: 2)
-                }
-                .frame(width: 58, height: 58)
-
-                Text("CINEVIET")
-                    .font(.system(size: 34, weight: .black, design: .rounded))
-                    .tracking(1.2)
-                    .foregroundStyle(.white)
-                    .minimumScaleFactor(0.72)
-                    .lineLimit(1)
-            }
-
-            Text("PHIM VIỆT • CHẤT ĐIỆN ẢNH")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .tracking(1.8)
-                .foregroundStyle(CineVietTheme.accent.opacity(0.88))
-        }
-        .shadow(color: .black.opacity(0.72), radius: 14, y: 6)
+        Image("CineVietBrand")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: 330)
+            .accessibilityHidden(true)
+            .shadow(color: CineVietTheme.accent.opacity(0.18), radius: 22)
+            .shadow(color: .black.opacity(0.72), radius: 14, y: 6)
     }
 
     private var loadingState: some View {
