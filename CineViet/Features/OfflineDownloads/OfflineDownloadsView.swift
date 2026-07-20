@@ -40,10 +40,16 @@ struct OfflineDownloadsView: View {
 private struct OfflinePlayerBridge: View {
     let item: OfflineDownloadItem; let watchHistoryService: WatchHistoryServicing
     var body: some View {
-        let episode = EpisodeItem.offline(name: item.episodeName, path: item.localManifestPath)
+        let audio = item.audioSources.map { EpisodeAudioSource(key: $0.key, label: $0.label, url: localURL($0.url)) }
+        let subtitles = item.subtitles.map { EpisodeSubtitleTrack(lang: $0.language ?? $0.key, label: $0.label, url: localURL($0.url), format: $0.format ?? "vtt") }
+        let episode = EpisodeItem.offline(name: item.episodeName, path: item.localManifestPath, subtitles: subtitles, audioSources: audio)
         let server = EpisodeServer(name: item.serverName, items: [episode])
-        if let url = OfflineDownloadManager.shared.playbackURL(for: item), url.isFileURL {
+        if let url = OfflineDownloadManager.shared.playbackURL(for: item) {
             PlayerView(movie: Movie.offline(id: item.movieId, slug: item.movieSlug, title: item.movieTitle, poster: item.posterURL, server: server), server: server, episode: episode, watchHistoryService: watchHistoryService, offlineURL: url)
         } else { ContentMessage(icon: "exclamationmark.triangle", title: "Không thể phát offline", message: "Bản tải xuống không còn trên thiết bị") }
+    }
+    private func localURL(_ relative: String) -> String {
+        guard let manifest = OfflineDownloadManager.shared.playbackURL(for: item), let url = URL(string: relative, relativeTo: manifest.deletingLastPathComponent())?.absoluteURL else { return "" }
+        return url.absoluteString
     }
 }

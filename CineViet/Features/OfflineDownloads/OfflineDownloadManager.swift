@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 struct OfflineTrack: Codable, Hashable, Identifiable {
     var key: String; var label: String; var url: String; var language: String?; var format: String?
@@ -58,7 +59,15 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         if jobs[id] != nil { return }
         if let old = items.first(where: { $0.id == id }), old.state == .completed, fileExists(old) { return }
         tombstones.remove(id)
-        let item = OfflineDownloadItem(id: id, movieId: movie.id, movieSlug: movie.slug, movieTitle: movie.title, episodeName: episode.name, serverName: server.name, sourceURL: source.absoluteString, posterURL: movie.posterURL?.absoluteString ?? "", audioSources: [], subtitles: [], state: .queued, createdAt: items.first(where: { $0.id == id })?.createdAt ?? Date(), localManifestPath: "", receivedBytes: 0, totalBytes: 0, progress: 0, error: "", taskIdentifier: nil)
+        let audio = episode.audioSources.compactMap { source -> OfflineTrack? in
+            guard Self.remoteURL(source.url) != nil else { return nil }
+            return OfflineTrack(key: source.key, label: source.label, url: source.url, language: nil, format: nil)
+        }
+        let subtitles = episode.subtitles.compactMap { subtitle -> OfflineTrack? in
+            guard Self.remoteURL(subtitle.url) != nil else { return nil }
+            return OfflineTrack(key: subtitle.lang, label: subtitle.label, url: subtitle.url, language: subtitle.lang, format: subtitle.format)
+        }
+        let item = OfflineDownloadItem(id: id, movieId: movie.id, movieSlug: movie.slug, movieTitle: movie.title, episodeName: episode.name, serverName: server.name, sourceURL: source.absoluteString, posterURL: movie.posterURL?.absoluteString ?? "", audioSources: audio, subtitles: subtitles, state: .queued, createdAt: items.first(where: { $0.id == id })?.createdAt ?? Date(), localManifestPath: "", receivedBytes: 0, totalBytes: 0, progress: 0, error: "", taskIdentifier: nil)
         try replaceAndPersist(item)
         start(id)
     }
@@ -74,7 +83,11 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     func delete(_ id: String) async { await ensureLoaded(); tombstones.insert(id); jobs[id]?.cancel(); jobs[id] = nil; try? FileManager.default.removeItem(at: itemDirectory(id)); items.removeAll { $0.id == id }; persist() }
     func deleteMovie(_ ids: [String]) async { await ensureLoaded(); let deleting = Set(ids); tombstones.formUnion(deleting); for id in deleting { jobs[id]?.cancel(); jobs[id] = nil; try? FileManager.default.removeItem(at: itemDirectory(id)) }; items.removeAll { deleting.contains($0.id) }; persist() }
 
-    func playbackURL(for item: OfflineDownloadItem) -> URL? { let url = resolvedURL(item); return FileManager.default.fileExists(atPath: url.path) ? url : nil }
+    func playbackURL(for item: OfflineDownloadItem) -> URL? {
+        let manifest = resolvedURL(item)
+        guard FileManager.default.fileExists(atPath: manifest.path) else { return nil }
+        return OfflineLoopbackServer.shared.register(directory: manifest.deletingLastPathComponent(), id: item.id)
+    }
     static func serverEligible(_ server: EpisodeServer) -> Bool { let normalized = server.name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current).replacingOccurrences(of: " ", with: "").lowercased(); guard normalized != "nguonc", !server.items.contains(where: { ($0.linkEmbed + $0.linkM3u8).lowercased().contains("streamc.xyz") }) else { return false }; return server.items.contains { eligibleURL($0) != nil } }
     static func eligibleURL(_ episode: EpisodeItem) -> URL? { guard !episode.linkM3u8.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let url = PlayerViewModel.directMediaURL(for: episode), !url.absoluteString.lowercased().contains("/embed") else { return nil }; return url }
 
@@ -114,9 +127,41 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         }
         try Task.checkCancellation(); guard !tombstones.contains(id) else { throw CancellationError() }
         let manifestFile = directory.appendingPathComponent("index.m3u8"); try rewritten.data(using: .utf8)?.write(to: manifestFile, options: [.atomic])
-        update(id) { $0.state = .completed; $0.localManifestPath = "\(id)/index.m3u8"; $0.progress = 1; $0.receivedBytes = bytes; $0.totalBytes = bytes; $0.taskIdentifier = nil; $0.error = "" }
+        var localAudio: [OfflineTrack] = []
+        for (index, track) in item.audioSources.enumerated() {
+            guard let remote = Self.remoteURL(track.url) else { continue }
+            if remote.absoluteString == source.absoluteString { localAudio.append(OfflineTrack(key: track.key, label: track.label, url: "index.m3u8", language: track.language, format: track.format)); continue }
+            do {
+                let folder = directory.appendingPathComponent("audio_\(index)", isDirectory: true)
+                let result = try await downloadHLS(remote, into: folder, prefix: "audio")
+                bytes += result.bytes
+                localAudio.append(OfflineTrack(key: track.key, label: track.label, url: "audio_\(index)/index.m3u8", language: track.language, format: track.format))
+            } catch is CancellationError { throw CancellationError() } catch { }
+        }
+        var localSubtitles: [OfflineTrack] = []
+        for (index, track) in item.subtitles.enumerated() {
+            guard let remote = Self.remoteURL(track.url) else { continue }
+            do {
+                let format = (track.format?.isEmpty == false ? track.format! : (remote.pathExtension.isEmpty ? "vtt" : remote.pathExtension)).lowercased()
+                let name = "subtitle_\(index).\(format)"; let subtitle = try await data(from: remote); try subtitle.write(to: directory.appendingPathComponent(name), options: [.atomic]); bytes += Int64(subtitle.count)
+                localSubtitles.append(OfflineTrack(key: track.key, label: track.label, url: name, language: track.language, format: format))
+            } catch is CancellationError { throw CancellationError() } catch { }
+        }
+        update(id) { $0.state = .completed; $0.localManifestPath = "\(id)/index.m3u8"; $0.audioSources = localAudio; $0.subtitles = localSubtitles; $0.progress = 1; $0.receivedBytes = bytes; $0.totalBytes = bytes; $0.taskIdentifier = nil; $0.error = "" }
     }
 
+    private static func remoteURL(_ value: String) -> URL? { guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }; return url }
+    private func downloadHLS(_ source: URL, into directory: URL, prefix: String) async throws -> (bytes: Int64, files: Int) {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var manifestURL = source; var manifest = try await text(from: manifestURL)
+        guard manifest.hasPrefix("#EXTM3U") else { throw OfflineError.notHLS }
+        if manifest.contains("#EXT-X-STREAM-INF") { guard let variant = bestVariant(in: manifest, relativeTo: manifestURL) else { throw OfflineError.noVariant }; manifestURL = variant; manifest = try await text(from: manifestURL) }
+        guard !manifest.contains("METHOD=SAMPLE-AES"), !manifest.contains("KEYFORMAT=") else { throw OfflineError.drm }
+        let resources = manifestResources(in: manifest, relativeTo: manifestURL); guard !resources.isEmpty else { throw OfflineError.empty }
+        var rewritten = manifest; var bytes: Int64 = 0
+        for (index, resource) in resources.enumerated() { try Task.checkCancellation(); let name = "\(prefix)_\(resource.kind)_\(String(format: "%05d", index)).\(fileExtension(for: resource))"; let payload = try await data(from: resource.url); try payload.write(to: directory.appendingPathComponent(name), options: [.atomic]); bytes += Int64(payload.count); rewritten = rewrite(rewritten, remote: resource.reference, local: name) }
+        try rewritten.data(using: .utf8)?.write(to: directory.appendingPathComponent("index.m3u8"), options: [.atomic]); return (bytes, resources.count)
+    }
     private func request(_ url: URL) -> URLRequest { var request = URLRequest(url: url); request.timeoutInterval = 120; request.setValue(AppEnvironment.siteBaseURL.absoluteString, forHTTPHeaderField: "Origin"); request.setValue(AppEnvironment.siteBaseURL.appendingPathComponent("").absoluteString, forHTTPHeaderField: "Referer"); request.setValue(AppEnvironment.userAgent, forHTTPHeaderField: "User-Agent"); return request }
     private func data(from url: URL) async throws -> Data { let (data, response) = try await URLSession.shared.data(for: request(url)); guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { throw OfflineError.sourceUnavailable }; return data }
     private func text(from url: URL) async throws -> String { guard let value = String(data: try await data(from: url), encoding: .utf8) else { throw OfflineError.notHLS }; return value }
@@ -138,6 +183,50 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
 }
 
 private struct HLSResource { let reference: String; let url: URL; let kind: String }
+
+private final class OfflineLoopbackServer: @unchecked Sendable {
+    static let shared = OfflineLoopbackServer()
+    private let queue = DispatchQueue(label: "live.cineviet.offline.loopback")
+    private var listener: NWListener?
+    private let port: UInt16 = 49_159
+    private var roots: [String: URL] = [:]
+
+    func register(directory: URL, id: String) -> URL? { queue.sync {
+        roots[id] = directory.standardizedFileURL
+        if listener == nil { start() }
+        guard listener != nil else { return nil }
+        return URL(string: "http://127.0.0.1:\(port)/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)/index.m3u8")
+    } }
+
+    private func start() {
+        guard let endpointPort = NWEndpoint.Port(rawValue: port), let listener = try? NWListener(using: .tcp, on: endpointPort) else { return }
+        listener.stateUpdateHandler = { _ in }
+        listener.newConnectionHandler = { [weak self] connection in self?.handle(connection) }
+        self.listener = listener; listener.start(queue: queue)
+    }
+
+    private func handle(_ connection: NWConnection) {
+        connection.start(queue: queue)
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, _, error in
+            guard let self, error == nil, let data, let request = String(data: data, encoding: .utf8), let first = request.components(separatedBy: "\r\n").first else { connection.cancel(); return }
+            let parts = first.split(separator: " "); guard parts.count >= 2, parts[0] == "GET" else { self.respond(connection, status: "405 Method Not Allowed", type: "text/plain", data: Data()); return }
+            self.serve(String(parts[1]), on: connection)
+        }
+    }
+
+    private func serve(_ rawPath: String, on connection: NWConnection) {
+        let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rawPath
+        let components = path.split(separator: "/").map(String.init)
+        guard components.count >= 2, let id = components.first?.removingPercentEncoding, let root = roots[id] else { respond(connection, status: "404 Not Found", type: "text/plain", data: Data()); return }
+        let relative = components.dropFirst().joined(separator: "/").removingPercentEncoding ?? ""
+        let file = root.appendingPathComponent(relative).standardizedFileURL
+        guard file.path.hasPrefix(root.path + "/"), let data = try? Data(contentsOf: file) else { respond(connection, status: "404 Not Found", type: "text/plain", data: Data()); return }
+        respond(connection, status: "200 OK", type: mime(file.pathExtension), data: data)
+    }
+
+    private func respond(_ connection: NWConnection, status: String, type: String, data: Data) { var response = Data("HTTP/1.1 \(status)\r\nContent-Type: \(type)\r\nContent-Length: \(data.count)\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".utf8); response.append(data); connection.send(content: response, completion: .contentProcessed { _ in connection.cancel() }) }
+    private func mime(_ ext: String) -> String { switch ext.lowercased() { case "m3u8": "application/vnd.apple.mpegurl"; case "ts": "video/mp2t"; case "m4s": "video/iso.segment"; case "mp4": "video/mp4"; case "vtt": "text/vtt"; case "srt": "application/x-subrip"; default: "application/octet-stream" } }
+}
 private extension String { func firstMatch(_ pattern: String) -> String? { guard let regex = try? NSRegularExpression(pattern: pattern), let match = regex.firstMatch(in: self, range: NSRange(startIndex..., in: self)), match.numberOfRanges > 1, let range = Range(match.range(at: 1), in: self) else { return nil }; return String(self[range]) } }
 enum OfflineError: LocalizedError { case unsupported, sourceUnavailable, notHLS, noVariant, drm, empty; var errorDescription: String? { switch self { case .unsupported: "Nguồn này không hỗ trợ tải offline"; case .sourceUnavailable: "Nguồn phim không còn khả dụng. Vui lòng chọn server khác."; case .notHLS: "Nguồn trả về không phải HLS"; case .noVariant: "Không tìm thấy luồng HLS phù hợp"; case .drm: "Nguồn DRM không hỗ trợ tải offline"; case .empty: "Danh sách HLS không có phân đoạn video" } } }
 private extension JSONEncoder { static var offline: JSONEncoder { let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601; return encoder } }

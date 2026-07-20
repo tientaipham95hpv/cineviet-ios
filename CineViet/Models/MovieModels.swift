@@ -167,8 +167,8 @@ struct EpisodeItem: Codable, Equatable, Identifiable {
     var playUrl: String { linkM3u8.isEmpty ? linkEmbed : linkM3u8 }
     enum CodingKeys: String, CodingKey { case name, filename, linkM3u8 = "link_m3u8", linkEmbed = "link_embed", subtitles, audioSources = "audio_sources" }
     init(watchTogetherURL: String) { name = "Đang xem"; filename = ""; linkM3u8 = watchTogetherURL; linkEmbed = ""; subtitles = []; audioSources = [] }
-    static func offline(name: String, path: String) -> EpisodeItem { EpisodeItem(offlineName: name, path: path) }
-    private init(offlineName: String, path: String) { name = offlineName; filename = ""; linkM3u8 = URL(fileURLWithPath: path).absoluteString; linkEmbed = ""; subtitles = []; audioSources = [] }
+    static func offline(name: String, path: String, subtitles: [EpisodeSubtitleTrack] = [], audioSources: [EpisodeAudioSource] = []) -> EpisodeItem { EpisodeItem(offlineName: name, path: path, subtitles: subtitles, audioSources: audioSources) }
+    private init(offlineName: String, path: String, subtitles: [EpisodeSubtitleTrack], audioSources: [EpisodeAudioSource]) { name = offlineName; filename = ""; linkM3u8 = URL(fileURLWithPath: path).absoluteString; linkEmbed = ""; self.subtitles = subtitles; self.audioSources = audioSources }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
