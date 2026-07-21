@@ -72,7 +72,7 @@ private final class OfflineSessionDelegate: NSObject, URLSessionDownloadDelegate
 final class OfflineDownloadManager: NSObject, ObservableObject {
     static let shared = OfflineDownloadManager(); static let backgroundIdentifier = "live.cineviet.ios.offline-hls"
     @Published private(set) var items: [OfflineDownloadItem] = []; @Published private(set) var loadError: String?
-    private var loaded = false; private var tombstones = Set<String>(); private var paused = Set<String>(); private var completionHandler: (() -> Void)?
+    private var loaded = false; private var tombstones = Set<String>(); private var paused = Set<String>(); private var foregroundPackages = Set<String>(); private var completionHandler: (() -> Void)?
     private let delegate = OfflineSessionDelegate(); private lazy var session: URLSession = {
         let c = URLSessionConfiguration.background(withIdentifier: Self.backgroundIdentifier); c.sessionSendsLaunchEvents = true; c.isDiscretionary = false; c.waitsForConnectivity = true; c.httpMaximumConnectionsPerHost = 1
         return URLSession(configuration: c, delegate: delegate, delegateQueue: nil)
@@ -157,8 +157,16 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         // several segment tasks at once can make nsurlsessiond fail with -3000
         // before our destination callback is reached on physical devices.
         if active == 0, let i=cp.resources.firstIndex(where:{$0.state == .pending}), let u=URL(string:cp.resources[i].remote) {
-            let task=session.downloadTask(with:request(u)); task.taskDescription=encodeIdentity(TaskIdentity(item:id,resource:cp.resources[i].id)); cp.resources[i].state = .running; task.resume()
-            try? saveCheckpoint(cp,id:id); update(id){$0.state = .downloading;$0.taskIdentifier=task.taskIdentifier}; return
+            let identity = TaskIdentity(item:id,resource:cp.resources[i].id); cp.resources[i].state = .running
+            try? saveCheckpoint(cp,id:id)
+            if foregroundPackages.contains(id) {
+                update(id){$0.state = .downloading;$0.taskIdentifier=nil}
+                Task { await downloadInProcess(identity, url:u) }
+            } else {
+                let task=session.downloadTask(with:request(u)); task.taskDescription=encodeIdentity(identity); task.resume()
+                update(id){$0.state = .downloading;$0.taskIdentifier=task.taskIdentifier}
+            }
+            return
         }
         try? saveCheckpoint(cp,id:id); if active == 0 { finalizeIfReady(id,checkpoint:cp) }
     }
@@ -170,6 +178,15 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     }
     fileprivate func downloadFailed(description:String?, error:Error) {
         guard let key=identity(description), !tombstones.contains(key.item), var cp=loadCheckpoint(key.item), let i=cp.resources.firstIndex(where:{$0.id==key.resource}) else{return}
+        if Self.isCannotCreateDownloadFile(error), !foregroundPackages.contains(key.item), !paused.contains(key.item), let url=URL(string:cp.resources[i].remote) {
+            // Some physical devices fail inside nsurlsessiond before the download
+            // delegate receives a temporary file. Fall back to an app-owned data
+            // task for this package; checkpointing still resumes at resource level.
+            foregroundPackages.insert(key.item); cp.resources[i].state = .running; try? saveCheckpoint(cp,id:key.item)
+            update(key.item){$0.state = .downloading;$0.error="";$0.taskIdentifier=nil}
+            Task { await downloadInProcess(key, url:url) }
+            return
+        }
         cp.resources[i].state = .pending; try? saveCheckpoint(cp,id:key.item)
         guard !paused.contains(key.item) else { return }
         if cp.resources[i].optional {
@@ -178,6 +195,19 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
             update(key.item){$0.state = .failed;$0.error=Self.downloadErrorMessage(error)}
         } else {
             update(key.item){$0.state = .failed;$0.error=Self.downloadErrorMessage(error)}
+        }
+    }
+    private func downloadInProcess(_ key:TaskIdentity,url:URL) async {
+        guard !tombstones.contains(key.item), !paused.contains(key.item), let cp=loadCheckpoint(key.item), let resource=cp.resources.first(where:{$0.id==key.resource}) else{return}
+        let destination=itemDirectory(key.item).appendingPathComponent(resource.relativePath)
+        do {
+            let (data,response)=try await URLSession.shared.data(for:request(url))
+            guard let http=response as? HTTPURLResponse,(200...299).contains(http.statusCode) else{throw OfflineError.sourceUnavailable}
+            try FileManager.default.createDirectory(at:destination.deletingLastPathComponent(),withIntermediateDirectories:true)
+            try data.write(to:destination,options:.atomic)
+            downloadFinished(description:encodeIdentity(key),permanentURL:destination,response:response)
+        } catch {
+            downloadFailed(description:encodeIdentity(key),error:error)
         }
     }
     private func finalizeIfReady(_ id:String,checkpoint cp:OfflineCheckpoint) {
@@ -207,6 +237,7 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         }
         return "\(error.localizedDescription) (\(diagnostic))"
     }
+    private static func isCannotCreateDownloadFile(_ error:Error)->Bool { let e=error as NSError; return e.domain == NSURLErrorDomain && e.code == NSURLErrorCannotCreateFile }
     private func ensureLoaded()async{if !loaded{await load()}}; private func itemDirectory(_ id:String)->URL{rootURL.appendingPathComponent(id,isDirectory:true)}
     private func resolvedURL(_ i:OfflineDownloadItem)->URL{let u=rootURL.appendingPathComponent(i.localManifestPath).standardizedFileURL;return u.path==itemDirectory(i.id).appendingPathComponent("index.m3u8").standardizedFileURL.path ? u:rootURL.appendingPathComponent(".invalid")}; private func fileExists(_ i:OfflineDownloadItem)->Bool{!i.localManifestPath.isEmpty && FileManager.default.fileExists(atPath:resolvedURL(i).path)}
     private func update(_ id:String,_ body:(inout OfflineDownloadItem)->Void){guard !tombstones.contains(id),let i=items.firstIndex(where:{$0.id==id}) else{return};body(&items[i]);persist()}; private func persist(){do{try persistNow();loadError=nil}catch{loadError="Không thể lưu thay đổi thư viện tải xuống."}}; private func persistNow()throws{try FileManager.default.createDirectory(at:rootURL,withIntermediateDirectories:true);try JSONEncoder.offline.encode(items).write(to:indexURL,options:.atomic)}
