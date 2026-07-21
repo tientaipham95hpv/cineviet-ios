@@ -74,7 +74,7 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     @Published private(set) var items: [OfflineDownloadItem] = []; @Published private(set) var loadError: String?
     private var loaded = false; private var tombstones = Set<String>(); private var paused = Set<String>(); private var completionHandler: (() -> Void)?
     private let delegate = OfflineSessionDelegate(); private lazy var session: URLSession = {
-        let c = URLSessionConfiguration.background(withIdentifier: Self.backgroundIdentifier); c.sessionSendsLaunchEvents = true; c.isDiscretionary = false; c.waitsForConnectivity = true; c.httpMaximumConnectionsPerHost = 4
+        let c = URLSessionConfiguration.background(withIdentifier: Self.backgroundIdentifier); c.sessionSendsLaunchEvents = true; c.isDiscretionary = false; c.waitsForConnectivity = true; c.httpMaximumConnectionsPerHost = 1
         return URLSession(configuration: c, delegate: delegate, delegateQueue: nil)
     }()
     private var rootURL: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("OfflineDownloads", isDirectory: true) }
@@ -152,9 +152,15 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         try? saveCheckpoint(cp,id:id); schedule(id,checkpoint:cp)
     }
     private func schedule(_ id:String, checkpoint cp:OfflineCheckpoint) {
-        guard !tombstones.contains(id) else{return}; var cp=cp; var active=cp.resources.filter{$0.state == .running}.count; var started=0
-        for i in cp.resources.indices where cp.resources[i].state == .pending { guard active < 4, let u=URL(string:cp.resources[i].remote) else{continue}; let task=session.downloadTask(with:request(u)); task.taskDescription=encodeIdentity(TaskIdentity(item:id,resource:cp.resources[i].id)); cp.resources[i].state = .running; task.resume(); active += 1; started += 1 }
-        try? saveCheckpoint(cp,id:id); update(id){$0.state = .downloading;$0.taskIdentifier=nil}; if active == 0 && started == 0 { finalizeIfReady(id,checkpoint:cp) }
+        guard !tombstones.contains(id) else{return}; var cp=cp; let active=cp.resources.filter{$0.state == .running}.count
+        // Keep exactly one daemon-owned download file open per package. Creating
+        // several segment tasks at once can make nsurlsessiond fail with -3000
+        // before our destination callback is reached on physical devices.
+        if active == 0, let i=cp.resources.firstIndex(where:{$0.state == .pending}), let u=URL(string:cp.resources[i].remote) {
+            let task=session.downloadTask(with:request(u)); task.taskDescription=encodeIdentity(TaskIdentity(item:id,resource:cp.resources[i].id)); cp.resources[i].state = .running; task.resume()
+            try? saveCheckpoint(cp,id:id); update(id){$0.state = .downloading;$0.taskIdentifier=task.taskIdentifier}; return
+        }
+        try? saveCheckpoint(cp,id:id); if active == 0 { finalizeIfReady(id,checkpoint:cp) }
     }
     fileprivate func downloadFinished(description:String?, permanentURL:URL, response:URLResponse?) {
         guard let key=identity(description), !tombstones.contains(key.item), var cp=loadCheckpoint(key.item), let i=cp.resources.firstIndex(where:{$0.id==key.resource}) else { try? FileManager.default.removeItem(at: permanentURL); return }
@@ -194,10 +200,12 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     private static func remoteURL(_ s:String)->URL?{guard let u=URL(string:s.trimmingCharacters(in:.whitespacesAndNewlines)),["http","https"].contains(u.scheme?.lowercased() ?? "") else{return nil};return u}
     private static func downloadErrorMessage(_ error: Error) -> String {
         let nsError = error as NSError
+        let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        let diagnostic = underlying.map { "\(nsError.domain) \(nsError.code) / \($0.domain) \($0.code)" } ?? "\(nsError.domain) \(nsError.code)"
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCannotCreateFile {
-            return "Không thể tạo tệp tải xuống. Hãy nhấn thử lại."
+            return "Không thể tạo tệp tải xuống (\(diagnostic)). Hãy nhấn thử lại."
         }
-        return error.localizedDescription
+        return "\(error.localizedDescription) (\(diagnostic))"
     }
     private func ensureLoaded()async{if !loaded{await load()}}; private func itemDirectory(_ id:String)->URL{rootURL.appendingPathComponent(id,isDirectory:true)}
     private func resolvedURL(_ i:OfflineDownloadItem)->URL{let u=rootURL.appendingPathComponent(i.localManifestPath).standardizedFileURL;return u.path==itemDirectory(i.id).appendingPathComponent("index.m3u8").standardizedFileURL.path ? u:rootURL.appendingPathComponent(".invalid")}; private func fileExists(_ i:OfflineDownloadItem)->Bool{!i.localManifestPath.isEmpty && FileManager.default.fileExists(atPath:resolvedURL(i).path)}
