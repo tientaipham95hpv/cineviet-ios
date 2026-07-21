@@ -51,7 +51,7 @@ struct UserAvatar: View {
                             .padding(size * 0.055)
                             .background(.black.opacity(0.92), in: Circle())
                             .overlay { Circle().stroke(.yellow, lineWidth: 1) }
-                            .offset(y: -size * 0.47)
+                        .offset(y: -size * 0.47)
                     }
                 ForEach(0..<4, id: \.self) { index in
                     Circle().fill(.white).frame(width: max(2, size * 0.045), height: max(2, size * 0.045))
@@ -61,9 +61,9 @@ struct UserAvatar: View {
                 }
             }
         }
-        .frame(width: size, height: size)
-        .padding(isVIP ? size * 0.11 : 0)
-        .frame(width: size + (isVIP ? size * 0.22 : 0), height: size + (isVIP ? size * 0.22 : 0))
+        // Reserve one stable slot for both normal and VIP avatars. The crown
+        // and sparkle ring are overlays and must never change ScrollView height.
+        .frame(width: size + size * 0.22, height: size + size * 0.22)
         .onAppear { if isVIP { withAnimation(.linear(duration: 5).repeatForever(autoreverses: false)) { spin = true } } }
         .accessibilityLabel("Ảnh đại diện của \(name)")
     }

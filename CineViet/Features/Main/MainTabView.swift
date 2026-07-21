@@ -75,7 +75,6 @@ struct MainTabView: View {
     private func navItem(_ index: Int, _ icon: String, _ label: String) -> some View {
         Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { selectedTab = index }
-            if index == 4 { NotificationCenter.default.post(name: .cineVietAccountTabSelected, object: nil) }
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: icon).font(.system(size: 19, weight: .semibold))
@@ -101,5 +100,4 @@ extension View {
 extension Notification.Name {
     static let cineVietPlayerDidAppear = Notification.Name("cineviet.player.didAppear")
     static let cineVietPlayerDidDisappear = Notification.Name("cineviet.player.didDisappear")
-    static let cineVietAccountTabSelected = Notification.Name("cineviet.accountTabSelected")
 }
