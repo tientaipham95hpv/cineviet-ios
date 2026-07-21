@@ -21,7 +21,7 @@ private struct InteractivePopGestureRestorer: UIViewControllerRepresentable {
 }
 
 private struct PlayerLaunch: Identifiable { let id = UUID(); let movie: Movie; let server: EpisodeServer; let episode: EpisodeItem }
-private enum DetailSection: String, CaseIterable, Identifiable { case episodes = "Tập phim", cast = "Diễn viên", related = "Đề xuất"; var id: Self { self } }
+private enum DetailSection: String, CaseIterable, Identifiable { case episodes = "Tập phim", cast = "Diễn viên", comments = "Bình luận", related = "Đề xuất"; var id: Self { self } }
 
 struct MovieDetailView: View {
     @EnvironmentObject private var container: AppContainer
@@ -104,7 +104,7 @@ struct MovieDetailView: View {
                 metadata(movie)
                 genres(movie)
                 synopsis(movie)
-                actions(movie)
+                actions(movie, proxy)
                 tabs(movie)
                 section(movie)
             }
@@ -279,7 +279,7 @@ struct MovieDetailView: View {
         if let text = movie.description.trimmedNonEmpty { VStack(alignment: .leading, spacing: 7) { Text("Nội dung phim").font(.headline); Text(text).foregroundStyle(CineVietTheme.textMuted).lineSpacing(5).lineLimit(synopsisExpanded ? nil : 4); Button(synopsisExpanded ? "Thu gọn" : "Xem thêm") { animate { synopsisExpanded.toggle() } }.font(.subheadline.bold()).foregroundStyle(CineVietTheme.accent).frame(minHeight: 34, alignment: .leading).contentShape(Rectangle()) }.padding(.horizontal, 18) }
     }
 
-    private func actions(_ movie: Movie) -> some View {
+    private func actions(_ movie: Movie, _ proxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
                 action(viewModel.isFavorite ? "heart.fill" : "heart", viewModel.isFavorite ? "Đã thích" : "Yêu thích", accent: .pink, busy: viewModel.isFavoriteBusy) { Task { await viewModel.toggleFavorite() } }
@@ -287,7 +287,10 @@ struct MovieDetailView: View {
                     .buttonStyle(DetailActionStyle()).accessibilityLabel("Playlist")
                 action("star.fill", "Đánh giá", accent: .yellow) { showingRating = true }
                 if movie.episodes.contains(where: OfflineDownloadManager.serverEligible) { action("arrow.down.circle.fill", "Tải xuống", accent: CineVietTheme.accent) { Task { do { try await container.authenticationService.requireOfflineDownloadAccess(); showingDownloads = true } catch { offlineAccessMessage = (error as? LocalizedError)?.errorDescription ?? "Không thể kiểm tra quyền tải xuống" } } } }
-                action("bubble.left.fill", "Bình luận", accent: .mint) { showingComments = true }
+                action("bubble.left.fill", "Bình luận", accent: .mint) {
+                    selectedSection = .comments
+                    animate { proxy.scrollTo("detail-sections", anchor: .top) }
+                }
                 ShareLink(item: canonicalURL(movie), subject: Text(movie.title), message: Text("Xem \(movie.title) trên CineViet")) { actionLabel("square.and.arrow.up", "Chia sẻ", accent: .orange) }
                     .buttonStyle(DetailActionStyle()).accessibilityLabel("Chia sẻ")
             }
@@ -312,7 +315,14 @@ struct MovieDetailView: View {
     private func canonicalURL(_ movie: Movie) -> URL { AppEnvironment.siteBaseURL.appendingPathComponent("movie").appendingPathComponent(movie.routeKey) }
 
     @ViewBuilder private func tabs(_ movie: Movie) -> some View {
-        let available = DetailSection.allCases.filter { $0 == .episodes ? !movie.episodes.isEmpty : ($0 == .cast ? (!movie.cast.isEmpty || !movie.directors.isEmpty) : !movie.related.isEmpty) }
+        let available = DetailSection.allCases.filter {
+            switch $0 {
+            case .episodes: return !movie.episodes.isEmpty
+            case .cast: return !movie.cast.isEmpty || !movie.directors.isEmpty
+            case .comments: return true
+            case .related: return !movie.related.isEmpty
+            }
+        }
         if !available.isEmpty { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { ForEach(available) { item in Button { animate { selectedSection = item } } label: { Text(item.rawValue).font(.system(size: 14, weight: selectedSection == item ? .bold : .medium, design: .rounded)).foregroundStyle(selectedSection == item ? .black : CineVietTheme.textMuted).padding(.horizontal, 18).frame(minHeight: 42).background(selectedSection == item ? CineVietTheme.accent : CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(selectedSection == item ? CineVietTheme.accent : CineVietTheme.border, lineWidth: 0.8) } }.buttonStyle(.plain) } }.padding(.horizontal, 18).padding(.vertical, 4) }.id("detail-sections").onAppear { if !available.contains(selectedSection), let first = available.first { selectedSection = first } } }
     }
 
@@ -320,6 +330,7 @@ struct MovieDetailView: View {
         switch selectedSection {
         case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { if movie.episodes.count > 1 { HStack { Spacer(minLength: 0); Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").font(.subheadline.weight(.semibold)).lineLimit(1).padding(.horizontal, 14).frame(minHeight: 44).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.system(size: 14, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity, minHeight: 56).background(LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous)).overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(CineVietTheme.border.opacity(0.9)) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? 0.45 : 1) } } }.padding(.horizontal, 18).padding(.top, 8) }
         case .cast: VStack(alignment: .leading, spacing: 14) { ForEach(movie.directors.filter { !$0.name.isEmpty }, id: \.name) { Text("Đạo diễn: \($0.name)").font(.subheadline) }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92))], spacing: 16) { ForEach(movie.cast.filter { !$0.name.isEmpty }.prefix(30), id: \.name) { person in VStack { Circle().fill(CineVietTheme.panel).frame(width: 64, height: 64).overlay { Text(String(person.name.prefix(1))).font(.title2.bold()).foregroundStyle(CineVietTheme.accent) }; Text(person.name).font(.caption).multilineTextAlignment(.center).lineLimit(2) } } } }.padding(20)
+        case .comments: CommentsSection(viewModel: viewModel).padding(.horizontal, 18).padding(.top, 8)
         case .related: ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movie.related) { related in Button { selectedRelatedMovie = related } label: { MovieCardView(movie: related) }.buttonStyle(.plain).accessibilityHint("Mở chi tiết phim") } }.padding(20) }
         }
     }
@@ -339,6 +350,29 @@ private struct DetailLoadingView: View {
             ForEach(0..<3, id: \.self) { _ in RoundedRectangle(cornerRadius: 7).fill(CineVietTheme.panel).frame(height: 18).padding(.horizontal, 18) }
         }
         .redacted(reason: .placeholder).accessibilityElement().accessibilityLabel("Đang tải thông tin phim")
+    }
+}
+
+private struct CommentsSection: View {
+    @ObservedObject var viewModel: MovieDetailViewModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if viewModel.comments.isEmpty {
+                Text("Chưa có bình luận").font(.subheadline).foregroundStyle(CineVietTheme.textMuted)
+            } else {
+                ForEach(viewModel.comments.prefix(10)) { item in
+                    HStack(alignment: .top, spacing: 10) {
+                        UserAvatar(name: item.userName, url: URL(string: item.avatar ?? ""), isVIP: item.isVip || item.isAdmin, size: 36)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack { Text(item.userName).font(.subheadline.bold()); if item.isVip || item.isAdmin { MembershipTag(isAdmin: item.isAdmin) } }
+                            Text(item.content).font(.subheadline).foregroundStyle(.primary.opacity(0.9))
+                        }
+                    }
+                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+        }
     }
 }
 
