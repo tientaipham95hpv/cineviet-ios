@@ -179,7 +179,9 @@ struct MovieComment: Decodable, Identifiable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeFlexibleInt(.id) ?? 0
         content = try c.decodeFlexibleString(.content) ?? ""
-        userName = try c.decodeFlexibleString(.userName)?.nonEmpty ?? "CineViet"
+        userName = try c.decodeFlexibleString(.userName)?.nonEmpty
+            ?? rawString(decoder, keys: ["userName", "name", "displayName"])
+            ?? "CineViet"
         createdAt = try c.decodeFlexibleString(.createdAt) ?? ""
         isSpoiler = (try c.decodeFlexibleInt(.isSpoiler) ?? 0) == 1
         let raw = try [String: JSONValue](from: decoder)
@@ -190,9 +192,18 @@ struct MovieComment: Decodable, Identifiable, Equatable {
             .compactMap { value($0)?.stringValue.nonEmpty }.compactMap(UserPayload.absoluteImageURL).first
         let role = (value("role")?.stringValue ?? value("user_role")?.stringValue ?? value("type")?.stringValue ?? "").lowercased()
         isAdmin = value("is_admin")?.boolValue == true || role == "admin" || role == "administrator"
-        isVip = ["is_vip", "isVip", "vip", "vip_active", "vipActive", "is_premium", "premium"].contains { value($0)?.boolValue == true }
+        isVip = ["user_is_vip", "userIsVip", "is_vip", "isVip", "vip", "vip_active", "vipActive", "is_premium", "premium"].contains { value($0)?.boolValue == true }
             || ["status", "membership", "membership_type", "plan"].contains { ["vip", "premium"].contains(value($0)?.stringValue.lowercased()) }
     }
+}
+
+private func rawString(_ decoder: Decoder, keys: [String]) -> String? {
+    guard let raw = try? [String: JSONValue](from: decoder) else { return nil }
+    let nested = raw["user"]?.object ?? raw["author"]?.object ?? [:]
+    for key in keys {
+        if let value = (raw[key] ?? nested[key])?.stringValue.nonEmpty { return value }
+    }
+    return nested["email"]?.stringValue.nonEmpty
 }
 
 struct RatingStats: Decodable, Equatable {
