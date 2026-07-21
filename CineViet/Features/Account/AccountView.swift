@@ -40,7 +40,7 @@ struct AccountView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 18) {
+                VStack(spacing: 18) {
                     profileHeader
                     membershipCard
                     settingsCard
@@ -55,6 +55,11 @@ struct AccountView: View {
                 .padding(.top, 12)
             }
             .refreshable { await model.loadMembership() }
+            .transaction { transaction in
+                // Membership/avatar updates must not animate the ScrollView's
+                // content height and move the user unexpectedly.
+                transaction.animation = nil
+            }
             .background(CineVietTheme.background.ignoresSafeArea())
             .navigationTitle("Tài khoản")
             .toolbar(.hidden, for: .navigationBar)
