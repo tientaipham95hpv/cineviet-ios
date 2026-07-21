@@ -533,7 +533,7 @@ private struct CommentsSheet: View {
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(item.isAdmin ? .black : .orange)
                             .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(item.isAdmin ? AnyShapeStyle(CineVietTheme.accent) : AnyShapeStyle(.orange.opacity(0.16)), in: Capsule())
+                            .background(item.isAdmin ? AnyShapeStyle(CineVietTheme.accent) : AnyShapeStyle(Color.orange.opacity(0.16)), in: Capsule())
                     }
                     Spacer(minLength: 6)
                     if !item.createdAt.isEmpty { Text(item.createdAt).font(.caption2).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }
@@ -562,8 +562,15 @@ private struct CommentAvatar: View {
             Circle().fill(LinearGradient(colors: [CineVietTheme.accent.opacity(0.9), .cyan.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
             if let raw = item.avatar, let url = URL(string: raw) {
                 AsyncImage(url: url) { phase in
-                    if case let .success(image) = phase { image.resizable().scaledToFill() } else { initials }
-                }.clipShape(Circle()).padding(2)
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        initials
+                    }
+                }
+                .clipShape(Circle())
+                .padding(2)
             } else { initials }
         }
         .frame(width: 42, height: 42)
