@@ -18,23 +18,53 @@ struct UserAvatar: View {
     let url: URL?
     let isVIP: Bool
     var size: CGFloat = 48
+    @State private var spin = false
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
+            // Keep the image completely inside the frame; the royal ring is drawn above it.
             Circle().fill(LinearGradient(colors: [CineVietTheme.accent, CineVietTheme.accentDeep], startPoint: .topLeading, endPoint: .bottomTrailing))
             if let url {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase { image.resizable().scaledToFill() } else { initials }
-                }.clipShape(Circle()).padding(3)
-            } else { initials }
+                AsyncImage(url: url, transaction: Transaction(animation: .easeInOut)) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFill()
+                    default: initials
+                    }
+                }
+                .clipShape(Circle())
+                .padding(isVIP ? size * 0.105 : 3)
+            } else { initials.padding(isVIP ? size * 0.105 : 3) }
+
             if isVIP {
-                Circle().fill(.black.opacity(0.9)).frame(width: size * 0.30, height: size * 0.30)
-                    .overlay { Image(systemName: "crown.fill").font(.system(size: size * 0.13, weight: .bold)).foregroundStyle(.yellow) }
-                    .offset(x: size * 0.08, y: -size * 0.05)
+                Circle()
+                    .strokeBorder(
+                        AngularGradient(gradient: Gradient(colors: [.brown, .yellow, .white, .yellow, .brown]), center: .center),
+                        lineWidth: max(2.5, size * 0.065)
+                    )
+                    .rotationEffect(.degrees(spin ? 360 : 0))
+                    .shadow(color: .yellow.opacity(0.95), radius: size * 0.12)
+                    .overlay {
+                        // Symmetric crown badge, centered at twelve o'clock.
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: max(9, size * 0.18), weight: .black))
+                            .foregroundStyle(.yellow)
+                            .padding(size * 0.055)
+                            .background(.black.opacity(0.92), in: Circle())
+                            .overlay { Circle().stroke(.yellow, lineWidth: 1) }
+                            .offset(y: -size * 0.47)
+                    }
+                ForEach(0..<4, id: \.self) { index in
+                    Circle().fill(.white).frame(width: max(2, size * 0.045), height: max(2, size * 0.045))
+                        .shadow(color: .white, radius: size * 0.08)
+                        .offset(y: -size * 0.48)
+                        .rotationEffect(.degrees(Double(index) * 90 + (spin ? 360 : 0)))
+                }
             }
         }
         .frame(width: size, height: size)
-        .overlay { Circle().stroke(isVIP ? Color.yellow : CineVietTheme.accent.opacity(0.75), lineWidth: isVIP ? max(2, size * 0.045) : 2) }
+        .padding(isVIP ? size * 0.11 : 0)
+        .frame(width: size + (isVIP ? size * 0.22 : 0), height: size + (isVIP ? size * 0.22 : 0))
+        .onAppear { if isVIP { withAnimation(.linear(duration: 5).repeatForever(autoreverses: false)) { spin = true } } }
         .accessibilityLabel("Ảnh đại diện của \(name)")
     }
 
