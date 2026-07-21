@@ -184,7 +184,8 @@ struct MovieComment: Decodable, Identifiable, Equatable {
         let raw = try [String: JSONValue](from: decoder)
         let nested = [raw["user"]?.object, raw["author"]?.object, raw["profile"]?.object, raw["account"]?.object].compactMap { $0 }
         func value(_ key: String) -> JSONValue? { raw[key] ?? nested.compactMap { $0[key] }.first }
-        avatar = value("avatar")?.stringValue.nonEmpty
+        avatar = ["avatar", "user_avatar", "userAvatar", "avatarUrl", "avatar_url", "photo_url", "photoUrl", "picture", "image"]
+            .compactMap { value($0)?.stringValue.nonEmpty }.first
         let role = (value("role")?.stringValue ?? value("user_role")?.stringValue ?? value("type")?.stringValue ?? "").lowercased()
         isAdmin = value("is_admin")?.intValue == 1 || role == "admin" || role == "administrator"
         isVip = value("is_vip")?.intValue == 1 || (value("status")?.stringValue ?? "").lowercased() == "vip"

@@ -69,15 +69,15 @@ struct AccountView: View {
     private var profileHeader: some View {
         VStack(spacing: 16) {
             HStack(alignment: .center, spacing: 16) {
-                avatar
+                UserAvatar(name: displayName, url: URL(string: user.avatar ?? ""), isVIP: user.isVip || isAdministrator, size: 82)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(displayName).font(.title2.bold()).lineLimit(2)
                     if let email = user.email { Text(email).font(.subheadline).foregroundStyle(CineVietTheme.textMuted).lineLimit(1).textSelection(.enabled) }
                     HStack(spacing: 7) {
-                        Label(membershipLabel, systemImage: user.isVip ? "crown.fill" : "person.fill")
+                        Label(membershipLabel, systemImage: user.isVip || isAdministrator ? "crown.fill" : "person.fill")
                         if let status = user.status, !status.isEmpty { Text("•"); Text(status.capitalized) }
                     }
-                    .font(.caption.weight(.bold)).foregroundStyle(user.isVip ? CineVietTheme.accent : CineVietTheme.textMuted)
+                    .font(.caption.weight(.bold)).foregroundStyle(user.isVip || isAdministrator ? CineVietTheme.accent : CineVietTheme.textMuted)
                 }
                 Spacer(minLength: 0)
             }
@@ -90,25 +90,7 @@ struct AccountView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var avatar: some View {
-        Group {
-            if let raw = user.avatar, let url = URL(string: raw) {
-                AsyncImage(url: url) { phase in
-                    if case let .success(image) = phase { image.resizable().scaledToFill() } else { initialsAvatar }
-                }
-            } else { initialsAvatar }
-        }
-        .frame(width: 82, height: 82).clipShape(Circle())
-        .overlay { Circle().stroke(CineVietTheme.accent.opacity(0.75), lineWidth: 2) }
-        .accessibilityLabel("Ảnh đại diện của \(displayName)")
-    }
-
-    private var initialsAvatar: some View {
-        ZStack {
-            LinearGradient(colors: [CineVietTheme.accent, CineVietTheme.accentDeep], startPoint: .topLeading, endPoint: .bottomTrailing)
-            Text(initials).font(.title.bold()).foregroundStyle(.black)
-        }
-    }
+    private var isAdministrator: Bool { [user.role, user.userRole, user.type].compactMap { $0?.lowercased() }.contains { $0 == "admin" || $0 == "administrator" } }
 
     private var membershipCard: some View {
         card(title: "Đặc quyền", icon: "crown.fill") {

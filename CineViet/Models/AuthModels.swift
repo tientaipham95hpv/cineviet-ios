@@ -91,12 +91,24 @@ struct User: Decodable, Identifiable, Equatable {
         email = raw["email"]?.stringValue.nonEmpty
         name = raw["name"]?.stringValue.nonEmpty
         username = raw["username"]?.stringValue.nonEmpty
-        avatar = raw["avatar"]?.stringValue.nonEmpty
+        avatar = UserPayload.avatarURL(from: raw)
         role = raw["role"]?.stringValue.nonEmpty
         userRole = raw["user_role"]?.stringValue.nonEmpty
         type = raw["type"]?.stringValue.nonEmpty
         status = raw["status"]?.stringValue.nonEmpty
         vipExpiresAt = raw["vip_expires_at"]?.stringValue.nonEmpty ?? raw["vipExpiresAt"]?.stringValue.nonEmpty
         isVip = raw["is_vip"] == .bool(true) || raw["is_vip"]?.intValue == 1 || status?.lowercased() == "vip"
+    }
+}
+
+enum UserPayload {
+    static func avatarURL(from raw: [String: JSONValue]) -> String? {
+        let maps = [raw, raw["user"]?.object, raw["profile"]?.object, raw["author"]?.object, raw["account"]?.object].compactMap { $0 }
+        for map in maps {
+            for key in ["avatar", "user_avatar", "userAvatar", "avatarUrl", "avatar_url", "photo_url", "photoUrl", "picture", "image"] {
+                if let value = map[key]?.stringValue.nonEmpty { return value }
+            }
+        }
+        return nil
     }
 }

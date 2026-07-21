@@ -524,17 +524,11 @@ private struct CommentsSheet: View {
 
     private func commentCard(_ item: MovieComment) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            CommentAvatar(item: item)
+            UserAvatar(name: item.userName, url: URL(string: item.avatar ?? ""), isVIP: item.isVip || item.isAdmin, size: 42)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(item.userName).font(.subheadline.bold()).lineLimit(1)
-                    if item.isAdmin || item.isVip {
-                        Text(item.isAdmin ? "Administrator" : "VIP")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(item.isAdmin ? .black : .orange)
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(item.isAdmin ? AnyShapeStyle(CineVietTheme.accent) : AnyShapeStyle(Color.orange.opacity(0.16)), in: Capsule())
-                    }
+                    if item.isAdmin || item.isVip { MembershipTag(isAdmin: item.isAdmin) }
                     Spacer(minLength: 6)
                     if !item.createdAt.isEmpty { Text(item.createdAt).font(.caption2).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }
                 }
@@ -551,33 +545,6 @@ private struct CommentsSheet: View {
         .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(CineVietTheme.border.opacity(0.75)) }
         .accessibilityElement(children: .combine)
     }
-}
-
-private struct CommentAvatar: View {
-    let item: MovieComment
-    var body: some View {
-        let admin = item.isAdmin
-        let vip = item.isVip || admin
-        ZStack {
-            Circle().fill(LinearGradient(colors: [CineVietTheme.accent.opacity(0.9), .cyan.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            if let raw = item.avatar, let url = URL(string: raw) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        initials
-                    }
-                }
-                .clipShape(Circle())
-                .padding(2)
-            } else { initials }
-        }
-        .frame(width: 42, height: 42)
-        .overlay { if vip { Circle().stroke(admin ? .yellow : .orange, lineWidth: 2.5) } }
-        .overlay(alignment: .bottomTrailing) { if vip { Image(systemName: admin ? "crown.fill" : "star.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(admin ? .yellow : .orange).padding(3).background(.black, in: Circle()) } }
-    }
-    private var initials: some View { Text(String(item.userName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased()).font(.headline.bold()).foregroundStyle(.black) }
 }
 
 private extension String { var trimmedNonEmpty: String? { let value = trimmingCharacters(in: .whitespacesAndNewlines); return value.isEmpty || value.lowercased() == "null" || value == "0" ? nil : value } }
