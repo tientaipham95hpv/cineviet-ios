@@ -38,7 +38,6 @@ struct MovieDetailView: View {
     @State private var showingNewPlaylist = false
     @State private var newPlaylistName = ""
     @State private var showingRating = false
-    @State private var showingComments = false
     @State private var showingCreateWatchRoom = false
     @State private var watchTogetherLaunch: PlayerLaunch?
     @State private var showingDownloads = false
@@ -84,7 +83,6 @@ struct MovieDetailView: View {
         .fullScreenCover(item: $watchTogetherLaunch) { launch in PlayerView(movie: launch.movie, server: launch.server, episode: launch.episode, watchHistoryService: watchHistoryService, watchTogetherService: container.watchTogetherService).background(Color.black.ignoresSafeArea()).interactiveDismissDisabled() }
         .sheet(isPresented: $showingCreateWatchRoom) { CreateWatchRoomView(movie: viewModel.displayedMovie, service: container.watchTogetherService) { server, episode in watchTogetherLaunch = PlayerLaunch(movie: viewModel.displayedMovie, server: server, episode: episode) } }
         .sheet(isPresented: $showingRating) { RatingSheet(viewModel: viewModel) }
-        .sheet(isPresented: $showingComments) { CommentsSheet(viewModel: viewModel) }
         .sheet(isPresented: $showingDownloads) { OfflineDownloadPicker(movie: viewModel.displayedMovie, authenticationService: container.authenticationService).presentationDetents([.fraction(0.78), .large]) }
         .alert("Tạo playlist", isPresented: $showingNewPlaylist) { TextField("Tên playlist", text: $newPlaylistName); Button("Tạo và thêm phim") { let name = newPlaylistName; newPlaylistName = ""; Task { await viewModel.createPlaylist(name: name) } }.disabled(newPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty); Button("Huỷ", role: .cancel) {} }
         .alert("CineViet", isPresented: Binding(get: { viewModel.message != nil }, set: { if !$0 { viewModel.message = nil } })) { Button("OK") { viewModel.message = nil } } message: { Text(viewModel.message ?? "") }
@@ -287,10 +285,7 @@ struct MovieDetailView: View {
                     .buttonStyle(DetailActionStyle()).accessibilityLabel("Playlist")
                 action("star.fill", "Đánh giá", accent: .yellow) { showingRating = true }
                 if movie.episodes.contains(where: OfflineDownloadManager.serverEligible) { action("arrow.down.circle.fill", "Tải xuống", accent: CineVietTheme.accent) { Task { do { try await container.authenticationService.requireOfflineDownloadAccess(); showingDownloads = true } catch { offlineAccessMessage = (error as? LocalizedError)?.errorDescription ?? "Không thể kiểm tra quyền tải xuống" } } } }
-                action("bubble.left.fill", "Bình luận", accent: .mint) {
-                    selectedSection = .comments
-                    animate { proxy.scrollTo("detail-sections", anchor: .top) }
-                }
+                EmptyView()
                 ShareLink(item: canonicalURL(movie), subject: Text(movie.title), message: Text("Xem \(movie.title) trên CineViet")) { actionLabel("square.and.arrow.up", "Chia sẻ", accent: .orange) }
                     .buttonStyle(DetailActionStyle()).accessibilityLabel("Chia sẻ")
             }
