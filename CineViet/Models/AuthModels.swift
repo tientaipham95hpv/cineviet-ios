@@ -97,18 +97,51 @@ struct User: Decodable, Identifiable, Equatable {
         type = raw["type"]?.stringValue.nonEmpty
         status = raw["status"]?.stringValue.nonEmpty
         vipExpiresAt = raw["vip_expires_at"]?.stringValue.nonEmpty ?? raw["vipExpiresAt"]?.stringValue.nonEmpty
-        isVip = raw["is_vip"] == .bool(true) || raw["is_vip"]?.intValue == 1 || status?.lowercased() == "vip"
+        isVip = UserPayload.isVIP(from: raw)
     }
 }
 
 enum UserPayload {
     static func avatarURL(from raw: [String: JSONValue]) -> String? {
-        let maps = [raw, raw["user"]?.object, raw["profile"]?.object, raw["author"]?.object, raw["account"]?.object].compactMap { $0 }
+        let maps = nestedMaps(from: raw)
         for map in maps {
             for key in ["avatar", "user_avatar", "userAvatar", "avatarUrl", "avatar_url", "photo_url", "photoUrl", "picture", "image"] {
-                if let value = map[key]?.stringValue.nonEmpty { return value }
+                if let value = map[key]?.stringValue.nonEmpty { return absoluteImageURL(value) }
             }
         }
         return nil
+    }
+
+    static func isVIP(from raw: [String: JSONValue]) -> Bool {
+        let maps = nestedMaps(from: raw)
+        if maps.contains(where: { map in
+            ["is_vip", "isVip", "vip", "vip_active", "vipActive", "is_premium", "premium"]
+                .contains { map[$0]?.boolValue == true }
+        }) { return true }
+        return maps.contains { map in
+            ["status", "membership", "membership_type", "plan", "role", "user_role", "type"]
+                .contains { key in ["vip", "premium"].contains(map[key]?.stringValue.lowercased()) }
+        }
+    }
+
+    static func absoluteImageURL(_ raw: String) -> String? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.lowercased() != "null" else { return nil }
+        if value.hasPrefix("//") { return "https:\(value)" }
+        if let url = URL(string: value), url.scheme != nil { return value }
+        return AppEnvironment.siteBaseURL.appendingPathComponent(value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))).absoluteString
+    }
+
+    private static func nestedMaps(from root: [String: JSONValue]) -> [[String: JSONValue]] {
+        var result: [[String: JSONValue]] = []
+        func collect(_ map: [String: JSONValue], depth: Int) {
+            result.append(map)
+            guard depth < 3 else { return }
+            for key in ["user", "author", "profile", "account", "data"] {
+                if let child = map[key]?.object { collect(child, depth: depth + 1) }
+            }
+        }
+        collect(root, depth: 0)
+        return result
     }
 }

@@ -182,13 +182,14 @@ struct MovieComment: Decodable, Identifiable, Equatable {
         createdAt = try c.decodeFlexibleString(.createdAt) ?? ""
         isSpoiler = (try c.decodeFlexibleInt(.isSpoiler) ?? 0) == 1
         let raw = try [String: JSONValue](from: decoder)
-        let nested = [raw["user"]?.object, raw["author"]?.object, raw["profile"]?.object, raw["account"]?.object].compactMap { $0 }
+        let nested = [raw["user"]?.object, raw["author"]?.object, raw["profile"]?.object, raw["account"]?.object, raw["data"]?.object].compactMap { $0 }
         func value(_ key: String) -> JSONValue? { raw[key] ?? nested.compactMap { $0[key] }.first }
-        avatar = ["avatar", "user_avatar", "userAvatar", "avatarUrl", "avatar_url", "photo_url", "photoUrl", "picture", "image"]
-            .compactMap { value($0)?.stringValue.nonEmpty }.first
+        avatar = ["avatar", "user_avatar", "userAvatar", "avatarUrl", "avatar_url", "photo", "photo_url", "photoUrl", "picture", "image", "profilePicture", "profile_picture", "profile_photo_url"]
+            .compactMap { value($0)?.stringValue.nonEmpty }.compactMap(UserPayload.absoluteImageURL).first
         let role = (value("role")?.stringValue ?? value("user_role")?.stringValue ?? value("type")?.stringValue ?? "").lowercased()
-        isAdmin = value("is_admin")?.intValue == 1 || role == "admin" || role == "administrator"
-        isVip = value("is_vip")?.intValue == 1 || (value("status")?.stringValue ?? "").lowercased() == "vip"
+        isAdmin = value("is_admin")?.boolValue == true || role == "admin" || role == "administrator"
+        isVip = ["is_vip", "isVip", "vip", "vip_active", "vipActive", "is_premium", "premium"].contains { value($0)?.boolValue == true }
+            || ["status", "membership", "membership_type", "plan"].contains { ["vip", "premium"].contains(value($0)?.stringValue.lowercased()) }
     }
 }
 

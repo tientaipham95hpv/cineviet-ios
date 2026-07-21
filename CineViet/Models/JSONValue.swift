@@ -48,6 +48,15 @@ enum JSONValue: Codable, Equatable {
         }
     }
 
+    var boolValue: Bool? {
+        switch self {
+        case .bool(let value): return value
+        case .number(let value): return value != 0
+        case .string(let value): return ["1", "true", "yes", "active", "vip", "premium"].contains(value.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
+        default: return nil
+        }
+    }
+
     var doubleValue: Double? {
         switch self {
         case .number(let value): return value
