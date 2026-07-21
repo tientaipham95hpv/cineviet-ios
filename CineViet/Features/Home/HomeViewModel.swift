@@ -73,6 +73,13 @@ final class HomeViewModel: ObservableObject {
         await load(force: true)
     }
 
+    func removeHistory(_ item: WatchHistoryItem) async {
+        guard case .loaded(var data) = state else { return }
+        data.continueWatching.removeAll { $0.history.movieId == item.movieId }
+        state = .loaded(data)
+        await watchHistoryService.delete(movieID: item.movieId)
+    }
+
     private func fetch(_ query: MovieListQuery) async -> [Movie] {
         do {
             return try await movieService.list(query).movies

@@ -246,8 +246,10 @@ struct HomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 13) {
                     ForEach(items) { item in
-                        Button { viewModel.selectedMovie = item.movie } label: { ContinueWatchingCard(item: item) }
-                            .buttonStyle(.plain)
+                        ZStack(alignment: .topTrailing) {
+                            Button { viewModel.selectedMovie = item.movie } label: { ContinueWatchingCard(item: item) }.buttonStyle(.plain)
+                            Button(role: .destructive) { Task { await viewModel.removeHistory(item.history) } } label: { Image(systemName: "xmark.circle.fill").font(.title3).foregroundStyle(.white).padding(8).background(.black.opacity(0.65), in: Circle()) }.accessibilityLabel("Xóa \(item.movie.title) khỏi Xem tiếp")
+                        }
                     }
                 }.padding(.horizontal, 18)
             }

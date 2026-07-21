@@ -324,9 +324,28 @@ struct MovieDetailView: View {
     @ViewBuilder private func section(_ movie: Movie) -> some View {
         switch selectedSection {
         case .episodes: if let server = viewModel.selectedServer { VStack(alignment: .leading, spacing: 14) { if movie.episodes.count > 1 { HStack { Spacer(minLength: 0); Menu { ForEach(Array(movie.episodes.enumerated()), id: \.offset) { index, item in Button(item.name) { viewModel.selectServer(index) } } } label: { Label(server.name, systemImage: "chevron.down").font(.subheadline.weight(.semibold)).lineLimit(1).padding(.horizontal, 14).frame(minHeight: 44).background(CineVietTheme.panel, in: Capsule()).overlay { Capsule().stroke(CineVietTheme.border) } } } }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) { ForEach(server.items) { episode in Button { playerLaunch = PlayerLaunch(movie: movie, server: server, episode: episode) } label: { Text(episode.name).font(.system(size: 14, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity, minHeight: 56).background(LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous)).overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(CineVietTheme.border.opacity(0.9)) } }.buttonStyle(EpisodeButtonStyle()).disabled(PlayerViewModel.directMediaURL(for: episode) == nil).opacity(PlayerViewModel.directMediaURL(for: episode) == nil ? 0.45 : 1) } } }.padding(.horizontal, 18).padding(.top, 8) }
-        case .cast: VStack(alignment: .leading, spacing: 14) { ForEach(movie.directors.filter { !$0.name.isEmpty }, id: \.name) { Text("Đạo diễn: \($0.name)").font(.subheadline) }; LazyVGrid(columns: [GridItem(.adaptive(minimum: 92))], spacing: 16) { ForEach(movie.cast.filter { !$0.name.isEmpty }.prefix(30), id: \.name) { person in VStack { Circle().fill(CineVietTheme.panel).frame(width: 64, height: 64).overlay { Text(String(person.name.prefix(1))).font(.title2.bold()).foregroundStyle(CineVietTheme.accent) }; Text(person.name).font(.caption).multilineTextAlignment(.center).lineLimit(2) } } } }.padding(20)
+        case .cast: VStack(alignment: .leading, spacing: 18) {
+            if !movie.directors.isEmpty { Text("Đạo diễn").font(.headline); peopleGrid(movie.directors) }
+            if !movie.cast.isEmpty { Text("Diễn viên").font(.headline); peopleGrid(Array(movie.cast.prefix(30))) }
+        }.padding(20)
         case .comments: CommentsSection(viewModel: viewModel).padding(.horizontal, 18).padding(.top, 8)
         case .related: ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 14) { ForEach(movie.related) { related in Button { selectedRelatedMovie = related } label: { MovieCardView(movie: related) }.buttonStyle(.plain).accessibilityHint("Mở chi tiết phim") } }.padding(20) }
+        }
+    }
+
+    private func peopleGrid(_ people: [MoviePerson]) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92))], spacing: 16) {
+            ForEach(people.filter { !$0.name.isEmpty }, id: \.name) { person in
+                VStack(spacing: 8) {
+                    AsyncImage(url: person.avatarURL) { phase in
+                        if case .success(let image) = phase { image.resizable().scaledToFill() }
+                        else { Circle().fill(CineVietTheme.panel).overlay { Text(String(person.name.prefix(1))).font(.title2.bold()).foregroundStyle(CineVietTheme.accent) } }
+                    }
+                    .frame(width: 72, height: 72).clipShape(Circle())
+                    .overlay { Circle().stroke(CineVietTheme.border, lineWidth: 1) }
+                    Text(person.name).font(.caption).multilineTextAlignment(.center).lineLimit(2)
+                }
+            }
         }
     }
     private func animate(_ changes: () -> Void) { if reduceMotion { changes() } else { withAnimation(.easeInOut(duration: 0.22), changes) } }

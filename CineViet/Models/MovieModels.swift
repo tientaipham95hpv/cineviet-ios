@@ -113,6 +113,16 @@ struct MoviePerson: Codable, Equatable {
     let name: String
     let avatar: String
 
+    var avatarURL: URL? {
+        let raw = avatar.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, raw.lowercased() != "null" else { return nil }
+        if raw.hasPrefix("http://") || raw.hasPrefix("https://") { return URL(string: raw) }
+        if raw.hasPrefix("//") { return URL(string: "https:\(raw)") }
+        // TMDB profile paths are returned as /abc123.jpg, matching app v2.
+        if raw.hasPrefix("/"), !raw.hasPrefix("/uploads/") { return URL(string: "https://image.tmdb.org/t/p/w185\(raw)") }
+        return URL(string: raw, relativeTo: AppEnvironment.siteBaseURL)?.absoluteURL
+    }
+
     init(from decoder: Decoder) throws {
         if let value = try? decoder.singleValueContainer().decode(String.self) {
             name = value; avatar = ""; return

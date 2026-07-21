@@ -17,6 +17,7 @@ private enum LibrarySection: String, CaseIterable, Identifiable {
     @Published private(set) var historyMovies: [Int: Movie] = [:]
     @Published private(set) var isLoading = false
     @Published private(set) var removingFavoriteIDs: Set<Int> = []
+    @Published private(set) var removingHistoryIDs: Set<Int> = []
     @Published var errorMessage: String?
 
     let movieService: MovieServicing
@@ -46,6 +47,15 @@ private enum LibrarySection: String, CaseIterable, Identifiable {
         do { try await libraryService.toggleFavorite(movieID: movie.id, add: false) }
         catch { favorites.insert(movie, at: min(index, favorites.count)); errorMessage = error.localizedDescription }
         removingFavoriteIDs.remove(movie.id)
+    }
+
+    func removeHistory(_ item: WatchHistoryItem) async {
+        guard !removingHistoryIDs.contains(item.movieId) else { return }
+        removingHistoryIDs.insert(item.movieId)
+        history.removeAll { $0.movieId == item.movieId }
+        historyMovies[item.movieId] = nil
+        await historyService.delete(movieID: item.movieId)
+        removingHistoryIDs.remove(item.movieId)
     }
 
     func createPlaylist(name: String, description: String, isPublic: Bool) async -> Bool {
@@ -135,7 +145,7 @@ struct LibraryView: View {
 
     @ViewBuilder private var history: some View {
         if viewModel.history.isEmpty { state(icon: "play.circle", title: "Chưa có phim đang xem", message: "Tiến độ xem sẽ tự động xuất hiện tại đây.") }
-        else { LazyVStack(spacing: 12) { ForEach(Array(viewModel.history.enumerated()), id: \.offset) { _, item in Button { if let movie = viewModel.historyMovies[item.movieId] { selectedMovie = movie } } label: { HistoryRow(item: item, movie: viewModel.historyMovies[item.movieId]) }.buttonStyle(.plain).disabled(viewModel.historyMovies[item.movieId] == nil) } }.padding(.horizontal, 16) }
+        else { LazyVStack(spacing: 12) { ForEach(Array(viewModel.history.enumerated()), id: \.offset) { _, item in HStack(spacing: 8) { Button { if let movie = viewModel.historyMovies[item.movieId] { selectedMovie = movie } } label: { HistoryRow(item: item, movie: viewModel.historyMovies[item.movieId]) }.buttonStyle(.plain).disabled(viewModel.historyMovies[item.movieId] == nil); Button(role: .destructive) { Task { await viewModel.removeHistory(item) } } label: { Image(systemName: "xmark.circle.fill").font(.title3).padding(10) }.accessibilityLabel("Xóa \(viewModel.historyMovies[item.movieId]?.title ?? "phim") khỏi Xem tiếp") }.padding(.horizontal, 16) }.padding(.horizontal, 0) }
     }
 
     private func columns(_ width: CGFloat) -> [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 14), count: width >= 900 ? 5 : width >= 650 ? 4 : width >= 390 ? 3 : 2) }

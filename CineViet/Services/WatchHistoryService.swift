@@ -65,6 +65,7 @@ private struct WatchProgressPayload: Encodable {
 protocol WatchHistoryServicing {
     func continueWatching(limit: Int) async -> [WatchHistoryItem]
     func resume(movieId: Int) async -> WatchHistoryItem?
+    func delete(movieID: Int) async
     func save(movie: Movie, server: EpisodeServer, serverIndex: Int, episode: EpisodeItem, position: Double, duration: Double) async
 }
 
@@ -80,6 +81,11 @@ struct WatchHistoryService: WatchHistoryServicing {
 
     func resume(movieId: Int) async -> WatchHistoryItem? {
         await continueWatching(limit: 20).first { $0.movieId == movieId }
+    }
+
+    func delete(movieID: Int) async {
+        let request = APIRequest(method: .delete, path: "/history/\(movieID)", requiresAuthentication: true)
+        try? await apiClient.send(request)
     }
 
     func save(movie: Movie, server: EpisodeServer, serverIndex: Int, episode: EpisodeItem, position: Double, duration: Double) async {
