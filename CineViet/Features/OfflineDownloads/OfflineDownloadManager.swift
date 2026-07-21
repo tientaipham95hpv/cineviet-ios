@@ -32,9 +32,18 @@ private final class OfflineSessionDelegate: NSObject, URLSessionDownloadDelegate
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         // The system removes `location` when this delegate method returns. Move
         // it synchronously into an owned staging file before hopping actors.
-        let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let stagingDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("OfflineDownloadStaging", isDirectory: true)
+        let staging = stagingDirectory.appendingPathComponent(UUID().uuidString)
         do {
-            try FileManager.default.moveItem(at: location, to: staging)
+            try FileManager.default.createDirectory(
+                at: stagingDirectory,
+                withIntermediateDirectories: true,
+                attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+            )
+            // Copying is more reliable than moving the system-owned temporary
+            // file across sandbox volumes. The source disappears after return.
+            try FileManager.default.copyItem(at: location, to: staging)
         } catch {
             let description = downloadTask.taskDescription
             Task { @MainActor [weak owner] in owner?.downloadFailed(description: description, error: error) }
@@ -138,7 +147,13 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         guard let key=identity(description), !tombstones.contains(key.item), var cp=loadCheckpoint(key.item), let i=cp.resources.firstIndex(where:{$0.id==key.resource}) else{return}
         cp.resources[i].state = .pending; try? saveCheckpoint(cp,id:key.item)
         guard !paused.contains(key.item) else { return }
-        if cp.resources[i].optional { schedule(key.item,checkpoint:cp) } else { update(key.item){$0.state = .failed;$0.error=error.localizedDescription} }
+        if cp.resources[i].optional {
+            // Optional tracks must not enter an immediate retry loop. They stay
+            // pending and are retried explicitly with the package.
+            update(key.item){$0.state = .failed;$0.error=Self.downloadErrorMessage(error)}
+        } else {
+            update(key.item){$0.state = .failed;$0.error=Self.downloadErrorMessage(error)}
+        }
     }
     private func finalizeIfReady(_ id:String,checkpoint cp:OfflineCheckpoint) {
         let required=cp.resources.filter{!$0.optional}; guard required.allSatisfy({$0.state == .complete}) else{return}; var written=false
@@ -158,6 +173,13 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
     private func rewrite(_ m:String,remote:String,local:String)->String{m.components(separatedBy:.newlines).map{let x=$0.trimmingCharacters(in:.whitespacesAndNewlines);if x==remote{return local};return $0.replacingOccurrences(of:"URI=\"\(remote)\"",with:"URI=\"\(local)\"")}.joined(separator:"\n")}
     private func fileExtension(_ r:HLSResource)->String{if r.kind=="key"{return "key"};let x=r.url.pathExtension.lowercased();return !x.isEmpty && x.count<7 ? x:(r.kind=="map" ? "mp4":"ts")}
     private static func remoteURL(_ s:String)->URL?{guard let u=URL(string:s.trimmingCharacters(in:.whitespacesAndNewlines)),["http","https"].contains(u.scheme?.lowercased() ?? "") else{return nil};return u}
+    private static func downloadErrorMessage(_ error: Error) -> String {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCannotCreateFile {
+            return "Không thể tạo tệp tải xuống. Hãy nhấn thử lại."
+        }
+        return error.localizedDescription
+    }
     private func ensureLoaded()async{if !loaded{await load()}}; private func itemDirectory(_ id:String)->URL{rootURL.appendingPathComponent(id,isDirectory:true)}
     private func resolvedURL(_ i:OfflineDownloadItem)->URL{let u=rootURL.appendingPathComponent(i.localManifestPath).standardizedFileURL;return u.path==itemDirectory(i.id).appendingPathComponent("index.m3u8").standardizedFileURL.path ? u:rootURL.appendingPathComponent(".invalid")}; private func fileExists(_ i:OfflineDownloadItem)->Bool{!i.localManifestPath.isEmpty && FileManager.default.fileExists(atPath:resolvedURL(i).path)}
     private func update(_ id:String,_ body:(inout OfflineDownloadItem)->Void){guard !tombstones.contains(id),let i=items.firstIndex(where:{$0.id==id}) else{return};body(&items[i]);persist()}; private func persist(){do{try persistNow();loadError=nil}catch{loadError="Không thể lưu thay đổi thư viện tải xuống."}}; private func persistNow()throws{try FileManager.default.createDirectory(at:rootURL,withIntermediateDirectories:true);try JSONEncoder.offline.encode(items).write(to:indexURL,options:.atomic)}
