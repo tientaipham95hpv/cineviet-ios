@@ -90,7 +90,7 @@ struct LibraryService: LibraryServicing {
     func playlistDetail(_ playlist: CinePlaylist) async throws -> PlaylistDetail {
         let request = APIRequest(method: .get, path: "/playlists/\(playlist.id)/movies", requiresAuthentication: true)
         let response: PlaylistDetailResponse = try await apiClient.send(request)
-        return PlaylistDetail(playlist: response.playlist, movies: response.movies)
+        return PlaylistDetail(playlist: response.playlist ?? playlist, movies: response.movies.filter { $0.id > 0 })
     }
 
     func updatePlaylist(_ playlistID: Int, name: String? = nil, description: String? = nil, isPublic: Bool? = nil) async throws -> CinePlaylist {
@@ -129,7 +129,25 @@ struct LibraryService: LibraryServicing {
     }
 }
 
-private struct PlaylistDetailResponse: Decodable { let playlist: CinePlaylist; let movies: [Movie] }
+private struct PlaylistDetailResponse: Decodable {
+    let playlist: CinePlaylist?
+    let movies: [Movie]
+
+    private enum CodingKeys: String, CodingKey { case playlist, movies, data }
+
+    init(from decoder: Decoder) throws {
+        if let list = try? decoder.singleValueContainer().decode([Movie].self) {
+            playlist = nil
+            movies = list
+            return
+        }
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        playlist = try? values.decode(CinePlaylist.self, forKey: .playlist)
+        movies = (try? values.decode([Movie].self, forKey: .movies))
+            ?? (try? values.decode([Movie].self, forKey: .data))
+            ?? []
+    }
+}
 private struct UpdatePlaylistPayload: Encodable {
     let name: String?; let description: String?; let isPublic: Bool?
     enum CodingKeys: String, CodingKey { case name, description, isPublic = "is_public" }

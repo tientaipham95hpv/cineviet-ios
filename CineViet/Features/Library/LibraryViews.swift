@@ -196,7 +196,17 @@ private struct HistoryRow: View {
     @Published private(set) var detail: PlaylistDetail?; @Published private(set) var isLoading = false; @Published var errorMessage: String?; @Published var isDeleted = false
     let service: LibraryServicing; let initial: CinePlaylist
     init(playlist: CinePlaylist, service: LibraryServicing) { initial = playlist; self.service = service }
-    func load() async { isLoading = true; defer { isLoading = false }; do { detail = try await service.playlistDetail(detail?.playlist ?? initial); errorMessage = nil } catch { errorMessage = error.localizedDescription } }
+    func load() async {
+        guard !isLoading else { return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            detail = try await service.playlistDetail(detail?.playlist ?? initial)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
     func update(name: String, description: String, isPublic: Bool) async -> Bool { guard let detail else { return false }; do { let updated = try await service.updatePlaylist(detail.playlist.id, name: name, description: description, isPublic: isPublic); self.detail = PlaylistDetail(playlist: updated, movies: detail.movies); return true } catch { errorMessage = error.localizedDescription; return false } }
     func remove(_ movie: Movie) async { guard let detail else { return }; do { try await service.remove(movieID: movie.id, from: detail.playlist.id); self.detail = PlaylistDetail(playlist: detail.playlist, movies: detail.movies.filter { $0.id != movie.id }) } catch { errorMessage = error.localizedDescription } }
     func delete() async { do { try await service.deletePlaylist((detail?.playlist ?? initial).id); isDeleted = true } catch { errorMessage = error.localizedDescription } }
@@ -264,8 +274,13 @@ struct PlaylistDetailView: View {
                 }
             } else if let error = viewModel.errorMessage {
                 ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được playlist", message: error)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ProgressView("Đang mở playlist…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(CineVietTheme.background.ignoresSafeArea())
         .navigationTitle(viewModel.detail?.playlist.name ?? viewModel.initial.name)
         .hidesFloatingNavigation()
