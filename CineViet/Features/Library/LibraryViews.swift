@@ -144,8 +144,31 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var history: some View {
-        if viewModel.history.isEmpty { state(icon: "play.circle", title: "Chưa có phim đang xem", message: "Tiến độ xem sẽ tự động xuất hiện tại đây.") }
-        else { LazyVStack(spacing: 12) { ForEach(Array(viewModel.history.enumerated()), id: \.offset) { _, item in HStack(spacing: 8) { Button { if let movie = viewModel.historyMovies[item.movieId] { selectedMovie = movie } } label: { HistoryRow(item: item, movie: viewModel.historyMovies[item.movieId]) }.buttonStyle(.plain).disabled(viewModel.historyMovies[item.movieId] == nil); Button(role: .destructive) { Task { await viewModel.removeHistory(item) } } label: { Image(systemName: "xmark.circle.fill").font(.title3).padding(10) }.accessibilityLabel("Xóa \(viewModel.historyMovies[item.movieId]?.title ?? "phim") khỏi Xem tiếp") }.padding(.horizontal, 16) }.padding(.horizontal, 0) }
+        if viewModel.history.isEmpty {
+            state(icon: "play.circle", title: "Chưa có phim đang xem", message: "Tiến độ xem sẽ tự động xuất hiện tại đây.")
+        } else {
+            LazyVStack(spacing: 12) {
+                ForEach(Array(viewModel.history.enumerated()), id: \.offset) { _, item in
+                    HStack(spacing: 8) {
+                        Button {
+                            if let movie = viewModel.historyMovies[item.movieId] { selectedMovie = movie }
+                        } label: {
+                            HistoryRow(item: item, movie: viewModel.historyMovies[item.movieId])
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.historyMovies[item.movieId] == nil)
+
+                        Button(role: .destructive) {
+                            Task { await viewModel.removeHistory(item) }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").font(.title3).padding(10)
+                        }
+                        .accessibilityLabel("Xóa \(viewModel.historyMovies[item.movieId]?.title ?? "phim") khỏi Xem tiếp")
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
     }
 
     private func columns(_ width: CGFloat) -> [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 14), count: width >= 900 ? 5 : width >= 650 ? 4 : width >= 390 ? 3 : 2) }
