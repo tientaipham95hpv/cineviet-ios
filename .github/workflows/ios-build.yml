@@ -20,6 +20,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify checkout
+        run: |
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          git log -1 --oneline
+          grep -n "let role\|let isVip" CineViet/Services/LibraryService.swift
+
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
