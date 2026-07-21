@@ -33,6 +33,8 @@ struct SessionRootView: View {
                     updateUser: viewModel.updateUser,
                     logout: viewModel.logout
                 )
+                .onAppear { container.currentUser = user }
+                .onChange(of: user) { container.currentUser = $0 }
             }
         }
         .task { await viewModel.restoreSession() }

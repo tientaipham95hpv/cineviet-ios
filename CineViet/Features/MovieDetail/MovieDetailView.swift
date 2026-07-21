@@ -465,6 +465,7 @@ private struct RatingSheet: View {
 
 private struct CommentsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var container: AppContainer
     @ObservedObject var viewModel: MovieDetailViewModel
     @State private var text = ""
     @State private var spoiler = false
@@ -523,12 +524,15 @@ private struct CommentsSheet: View {
     }
 
     private func commentCard(_ item: MovieComment) -> some View {
+        let inheritedMembership = belongsToCurrentUser(item) && (container.currentUser?.isVip == true || currentUserIsAdmin)
+        let showsVIPFrame = item.isVip || item.isAdmin || inheritedMembership
+        let showsAdminTag = item.isAdmin || (belongsToCurrentUser(item) && currentUserIsAdmin)
         HStack(alignment: .top, spacing: 12) {
-            UserAvatar(name: item.userName, url: URL(string: item.avatar ?? ""), isVIP: item.isVip || item.isAdmin, size: 42)
+            UserAvatar(name: item.userName, url: URL(string: item.avatar ?? container.currentUser.flatMap { belongsToCurrentUser(item) ? $0.avatar : nil } ?? ""), isVIP: showsVIPFrame, size: 42)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(item.userName).font(.subheadline.bold()).lineLimit(1)
-                    if item.isAdmin || item.isVip { MembershipTag(isAdmin: item.isAdmin) }
+                    if showsVIPFrame { MembershipTag(isAdmin: showsAdminTag) }
                     Spacer(minLength: 6)
                     if !item.createdAt.isEmpty { Text(item.createdAt).font(.caption2).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }
                 }
@@ -544,6 +548,18 @@ private struct CommentsSheet: View {
         .background(LinearGradient(colors: [CineVietTheme.panel, CineVietTheme.secondaryBackground.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(CineVietTheme.border.opacity(0.75)) }
         .accessibilityElement(children: .combine)
+    }
+
+    private var currentUserIsAdmin: Bool {
+        guard let user = container.currentUser else { return false }
+        return [user.role, user.userRole, user.type].compactMap { $0?.lowercased() }.contains { $0 == "admin" || $0 == "administrator" }
+    }
+
+    private func belongsToCurrentUser(_ comment: MovieComment) -> Bool {
+        guard let user = container.currentUser else { return false }
+        if let commentID = comment.userID { return commentID == user.id }
+        let commentName = comment.userName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return [user.name, user.username, user.email].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }.contains(commentName)
     }
 }
 

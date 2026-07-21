@@ -2,6 +2,7 @@ import Foundation
 
 @MainActor
 final class AppContainer: ObservableObject {
+    @Published var currentUser: User? = nil
     let tokenStore: TokenStore
     let settings: AppSettings
     let apiClient: APIClient

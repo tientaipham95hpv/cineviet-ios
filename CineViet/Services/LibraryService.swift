@@ -166,6 +166,7 @@ struct MovieComment: Decodable, Identifiable, Equatable {
     let id: Int
     let content: String
     let userName: String
+    let userID: String?
     let createdAt: String
     let isSpoiler: Bool
     let avatar: String?
@@ -184,6 +185,7 @@ struct MovieComment: Decodable, Identifiable, Equatable {
         let raw = try [String: JSONValue](from: decoder)
         let nested = [raw["user"]?.object, raw["author"]?.object, raw["profile"]?.object, raw["account"]?.object, raw["data"]?.object].compactMap { $0 }
         func value(_ key: String) -> JSONValue? { raw[key] ?? nested.compactMap { $0[key] }.first }
+        userID = value("user_id")?.stringValue.nonEmpty ?? value("userId")?.stringValue.nonEmpty ?? nested.compactMap { $0["id"]?.stringValue.nonEmpty }.first
         avatar = ["avatar", "user_avatar", "userAvatar", "avatarUrl", "avatar_url", "photo", "photo_url", "photoUrl", "picture", "image", "profilePicture", "profile_picture", "profile_photo_url"]
             .compactMap { value($0)?.stringValue.nonEmpty }.compactMap(UserPayload.absoluteImageURL).first
         let role = (value("role")?.stringValue ?? value("user_role")?.stringValue ?? value("type")?.stringValue ?? "").lowercased()
