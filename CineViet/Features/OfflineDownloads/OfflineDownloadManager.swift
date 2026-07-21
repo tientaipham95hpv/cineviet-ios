@@ -30,27 +30,34 @@ private struct HLSResource { let reference: String; let url: URL; let kind: Stri
 private final class OfflineSessionDelegate: NSObject, URLSessionDownloadDelegate, URLSessionDelegate, @unchecked Sendable {
     weak var owner: OfflineDownloadManager?
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        // The system removes `location` when this delegate method returns. Move
-        // it synchronously into an owned staging file before hopping actors.
-        let stagingDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("OfflineDownloadStaging", isDirectory: true)
-        let staging = stagingDirectory.appendingPathComponent(UUID().uuidString)
-        do {
-            try FileManager.default.createDirectory(
-                at: stagingDirectory,
-                withIntermediateDirectories: true,
-                attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
-            )
-            // Copying is more reliable than moving the system-owned temporary
-            // file across sandbox volumes. The source disappears after return.
-            try FileManager.default.copyItem(at: location, to: staging)
-        } catch {
-            let description = downloadTask.taskDescription
-            Task { @MainActor [weak owner] in owner?.downloadFailed(description: description, error: error) }
-            return
-        }
         let description = downloadTask.taskDescription
-        Task { @MainActor [weak owner] in owner?.downloadFinished(description: description, stagedURL: staging, response: downloadTask.response) }
+        do {
+            // The temporary URL is valid only during this callback. Resolve the
+            // checkpoint destination and move it directly into the package,
+            // avoiding a second staging file that can fail while the device is locked.
+            guard let destination = Self.destination(for: description) else { throw OfflineError.missingCheckpoint }
+            let parent = destination.deletingLastPathComponent()
+            guard FileManager.default.fileExists(atPath: parent.path) else { throw OfflineError.missingCheckpoint }
+            if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+            try FileManager.default.moveItem(at: location, to: destination)
+            Task { @MainActor [weak owner] in owner?.downloadFinished(description: description, permanentURL: destination, response: downloadTask.response) }
+        } catch {
+            Task { @MainActor [weak owner] in owner?.downloadFailed(description: description, error: error) }
+        }
+    }
+    private static func destination(for description: String?) -> URL? {
+        guard let description, let identityData = Data(base64Encoded: description),
+              let identity = try? JSONDecoder().decode(TaskIdentity.self, from: identityData) else { return nil }
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("OfflineDownloads", isDirectory: true)
+        let itemRoot = root.appendingPathComponent(identity.item, isDirectory: true).standardizedFileURL
+        let checkpointURL = itemRoot.appendingPathComponent("checkpoint.json")
+        guard let data = try? Data(contentsOf: checkpointURL),
+              let checkpoint = try? JSONDecoder().decode(OfflineCheckpoint.self, from: data),
+              let resource = checkpoint.resources.first(where: { $0.id == identity.resource }) else { return nil }
+        let destination = itemRoot.appendingPathComponent(resource.relativePath).standardizedFileURL
+        guard destination.path.hasPrefix(itemRoot.path + "/") else { return nil }
+        return destination
     }
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return }; let description = task.taskDescription
@@ -118,6 +125,17 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
             try await appendHLS(source, folder:"", prefix:"main", optional:false, checkpoint:&cp)
             for (i,t) in item.audioSources.enumerated() { guard let u=Self.remoteURL(t.url) else{continue}; do { try await appendHLS(u,folder:"audio_\(i)",prefix:"audio",optional:true,checkpoint:&cp); cp.localAudio.append(OfflineTrack(key:t.key,label:t.label,url:"audio_\(i)/index.m3u8",language:t.language,format:t.format)) } catch {} }
             for (i,t) in item.subtitles.enumerated() { guard let u=Self.remoteURL(t.url) else{continue}; let ext=(t.format?.isEmpty==false ? t.format! : (u.pathExtension.isEmpty ? "vtt":u.pathExtension)); cp.resources.append(OfflineResource(id:"subtitle-\(i)",remote:u.absoluteString,relativePath:"subtitle_\(i).\(ext)",reference:u.absoluteString,manifest:nil,optional:true,state:.pending,bytes:0)); cp.localSubtitles.append(OfflineTrack(key:t.key,label:t.label,url:"subtitle_\(i).\(ext)",language:t.language,format:ext)) }
+            // Create every destination directory while the app is active. The
+            // background daemon can then deliver files without needing to create
+            // protected directories while the device is locked.
+            for resource in cp.resources {
+                let parent = itemDirectory(id).appendingPathComponent(resource.relativePath).deletingLastPathComponent()
+                try FileManager.default.createDirectory(
+                    at: parent,
+                    withIntermediateDirectories: true,
+                    attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+                )
+            }
             try saveCheckpoint(cp,id:id)
         }
     }
@@ -138,10 +156,11 @@ final class OfflineDownloadManager: NSObject, ObservableObject {
         for i in cp.resources.indices where cp.resources[i].state == .pending { guard active < 4, let u=URL(string:cp.resources[i].remote) else{continue}; let task=session.downloadTask(with:request(u)); task.taskDescription=encodeIdentity(TaskIdentity(item:id,resource:cp.resources[i].id)); cp.resources[i].state = .running; task.resume(); active += 1; started += 1 }
         try? saveCheckpoint(cp,id:id); update(id){$0.state = .downloading;$0.taskIdentifier=nil}; if active == 0 && started == 0 { finalizeIfReady(id,checkpoint:cp) }
     }
-    fileprivate func downloadFinished(description:String?, stagedURL:URL, response:URLResponse?) {
-        guard let key=identity(description), !tombstones.contains(key.item), var cp=loadCheckpoint(key.item), let i=cp.resources.firstIndex(where:{$0.id==key.resource}) else { try? FileManager.default.removeItem(at: stagedURL); return }
-        guard let http=response as? HTTPURLResponse,(200...299).contains(http.statusCode) else { try? FileManager.default.removeItem(at: stagedURL); cp.resources[i].state = .pending; try? saveCheckpoint(cp,id:key.item); if !paused.contains(key.item) { schedule(key.item,checkpoint:cp) }; return }
-        let target=itemDirectory(key.item).appendingPathComponent(cp.resources[i].relativePath); do { try FileManager.default.createDirectory(at:target.deletingLastPathComponent(),withIntermediateDirectories:true); if FileManager.default.fileExists(atPath:target.path){try FileManager.default.removeItem(at:target)}; try FileManager.default.moveItem(at:stagedURL,to:target); cp.resources[i].state = .complete; cp.resources[i].bytes=(try? FileManager.default.attributesOfItem(atPath:target.path)[.size] as? NSNumber)?.int64Value ?? 0; try saveCheckpoint(cp,id:key.item); updateProgress(key.item,cp); if !paused.contains(key.item) { schedule(key.item,checkpoint:cp) } } catch { try? FileManager.default.removeItem(at: stagedURL); downloadFailed(description:description,error:error) }
+    fileprivate func downloadFinished(description:String?, permanentURL:URL, response:URLResponse?) {
+        guard let key=identity(description), !tombstones.contains(key.item), var cp=loadCheckpoint(key.item), let i=cp.resources.firstIndex(where:{$0.id==key.resource}) else { try? FileManager.default.removeItem(at: permanentURL); return }
+        guard let http=response as? HTTPURLResponse,(200...299).contains(http.statusCode) else { try? FileManager.default.removeItem(at: permanentURL); cp.resources[i].state = .pending; try? saveCheckpoint(cp,id:key.item); if !paused.contains(key.item) { schedule(key.item,checkpoint:cp) }; return }
+        cp.resources[i].state = .complete; cp.resources[i].bytes=(try? FileManager.default.attributesOfItem(atPath:permanentURL.path)[.size] as? NSNumber)?.int64Value ?? 0
+        do { try saveCheckpoint(cp,id:key.item); updateProgress(key.item,cp); if !paused.contains(key.item) { schedule(key.item,checkpoint:cp) } } catch { downloadFailed(description:description,error:error) }
     }
     fileprivate func downloadFailed(description:String?, error:Error) {
         guard let key=identity(description), !tombstones.contains(key.item), var cp=loadCheckpoint(key.item), let i=cp.resources.firstIndex(where:{$0.id==key.resource}) else{return}
@@ -231,6 +250,6 @@ private final class OfflineLoopbackServer: @unchecked Sendable {
     private func mime(_ ext: String) -> String { switch ext.lowercased() { case "m3u8": "application/vnd.apple.mpegurl"; case "ts": "video/mp2t"; case "m4s": "video/iso.segment"; case "mp4": "video/mp4"; case "vtt": "text/vtt"; case "srt": "application/x-subrip"; default: "application/octet-stream" } }
 }
 private extension String { func firstMatch(_ pattern: String) -> String? { guard let regex = try? NSRegularExpression(pattern: pattern), let match = regex.firstMatch(in: self, range: NSRange(startIndex..., in: self)), match.numberOfRanges > 1, let range = Range(match.range(at: 1), in: self) else { return nil }; return String(self[range]) } }
-enum OfflineError: LocalizedError { case unsupported, sourceUnavailable, notHLS, noVariant, drm, empty; var errorDescription: String? { switch self { case .unsupported: "Nguồn này không hỗ trợ tải offline"; case .sourceUnavailable: "Nguồn phim không còn khả dụng. Vui lòng chọn server khác."; case .notHLS: "Nguồn trả về không phải HLS"; case .noVariant: "Không tìm thấy luồng HLS phù hợp"; case .drm: "Nguồn DRM không hỗ trợ tải offline"; case .empty: "Danh sách HLS không có phân đoạn video" } } }
+enum OfflineError: LocalizedError { case unsupported, sourceUnavailable, notHLS, noVariant, drm, empty, missingCheckpoint; var errorDescription: String? { switch self { case .unsupported: "Nguồn này không hỗ trợ tải offline"; case .sourceUnavailable: "Nguồn phim không còn khả dụng. Vui lòng chọn server khác."; case .notHLS: "Nguồn trả về không phải HLS"; case .noVariant: "Không tìm thấy luồng HLS phù hợp"; case .drm: "Nguồn DRM không hỗ trợ tải offline"; case .empty: "Danh sách HLS không có phân đoạn video"; case .missingCheckpoint: "Không tìm thấy checkpoint của tệp tải xuống" } } }
 private extension JSONEncoder { static var offline: JSONEncoder { let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601; return encoder } }
 private extension JSONDecoder { static var offline: JSONDecoder { let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601; return decoder } }
