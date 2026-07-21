@@ -49,6 +49,7 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var playbackDuration: Double = 1
     @Published private(set) var activeSourceLabel = "Đang chuẩn bị nguồn"
     @Published private(set) var autoNextCountdown: Int?
+    @Published private(set) var activeIntroSkip: IntroSkipSegment?
     @Published var isAutoPlayEnabled: Bool {
         didSet { defaults.set(isAutoPlayEnabled, forKey: autoPlayPreferenceKey) }
     }
@@ -84,6 +85,8 @@ final class PlayerViewModel: ObservableObject {
     private var resumeTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
     private var autoNextTask: Task<Void, Never>?
+    private var introSkipTask: Task<Void, Never>?
+    private var skippedIntroIDs = Set<String>()
     private var embeddedAudioGroup: AVMediaSelectionGroup?
     private var embeddedSubtitleGroup: AVMediaSelectionGroup?
     private var candidateQueue: [PlaybackCandidate] = []
@@ -147,6 +150,7 @@ final class PlayerViewModel: ObservableObject {
         configureAudioSession()
         installObservers()
         rebuildQueueAndLoad(preserving: nil, includeEquivalentServers: true)
+        loadIntroSkip()
     }
 
     func stop() {
@@ -156,6 +160,14 @@ final class PlayerViewModel: ObservableObject {
         cancelAsyncWork()
         removePlayerObservers()
         deactivateAudioSession()
+        introSkipTask?.cancel()
+    }
+
+    func skipActiveIntro() {
+        guard let segment = activeIntroSkip else { return }
+        skippedIntroIDs.insert(segment.id)
+        seek(to: segment.end)
+        activeIntroSkip = nil
     }
 
     func applicationDidEnterBackground() {
@@ -204,6 +216,10 @@ final class PlayerViewModel: ObservableObject {
         shouldFetchRemoteResume = true
         pendingResumePosition = nil
         rebuildQueueAndLoad(preserving: nil, includeEquivalentServers: true)
+        skippedIntroIDs.removeAll()
+        introSkipSegments = []
+        activeIntroSkip = nil
+        loadIntroSkip()
     }
 
     func playServer(named name: String) {
@@ -386,6 +402,7 @@ final class PlayerViewModel: ObservableObject {
             let duration = self.player.currentItem?.duration.seconds ?? 0
             self.playbackDuration = duration.isFinite && duration > 0 ? duration : 1
             self.isPlaying = self.player.rate > 0
+            self.updateIntroSkip()
         }
         historyObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 10, preferredTimescale: 1), queue: .main) { [weak self] _ in self?.saveProgress(force: false) }
         audioInterruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(), queue: .main) { [weak self] note in
@@ -462,6 +479,38 @@ final class PlayerViewModel: ObservableObject {
         let index = movie.episodes.firstIndex(where: { $0.name == currentServer.name }) ?? 0
         let service = watchHistoryService, movie = movie, server = currentServer, episode = currentEpisode
         Task { await service.save(movie: movie, server: server, serverIndex: index, episode: episode, position: position, duration: duration) }
+    }
+
+    private func loadIntroSkip() {
+        guard movie.id > 0, movie.episodes.count > 0 else { return }
+        let episodeNumber = currentEpisode.name.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }.first ?? 0
+        guard episodeNumber > 0 else { return }
+        introSkipTask?.cancel()
+        introSkipTask = Task { [weak self] in
+            guard let self else { return }
+            var components = URLComponents(url: AppEnvironment.apiBaseURL.appendingPathComponent("app/intro-segments"), resolvingAgainstBaseURL: false)
+            components?.queryItems = [
+                URLQueryItem(name: "movie_id", value: String(self.movie.id)),
+                URLQueryItem(name: "episode", value: String(episodeNumber))
+            ] + (self.movie.partNumber.map { [URLQueryItem(name: "season", value: String($0))] } ?? [])
+            guard let url = components?.url else { return }
+            var request = URLRequest(url: url); request.setValue(AppEnvironment.mobileKey, forHTTPHeaderField: "X-Mobile-Key")
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+                let decoded = try JSONDecoder.cineViet.decode(IntroSkipResponse.self, from: data)
+                guard !Task.isCancelled else { return }
+                self.introSkipSegments = decoded.segments.filter { $0.end > $0.start }
+            } catch { }
+        }
+    }
+
+    private var introSkipSegments: [IntroSkipSegment] = []
+    private func updateIntroSkip() {
+        let position = playbackPosition
+        activeIntroSkip = introSkipSegments.first { segment in
+            !skippedIntroIDs.contains(segment.id) && position >= max(0, segment.start - 2) && position < segment.end
+        }
     }
 
     private func showNotice(_ message: String) {

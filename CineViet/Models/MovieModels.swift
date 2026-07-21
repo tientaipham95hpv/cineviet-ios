@@ -191,6 +191,19 @@ struct EpisodeItem: Codable, Equatable, Identifiable {
     }
 }
 
+struct IntroSkipSegment: Codable, Equatable, Identifiable {
+    let type: String
+    let start: Double
+    let end: Double
+    var id: String { "\(type):\(start):\(end)" }
+    var label: String {
+        switch type.lowercased() { case "recap": return "Bỏ qua recap"; case "outro": return "Bỏ qua outro"; default: return "Bỏ qua intro" }
+    }
+    enum CodingKeys: String, CodingKey { case type, start = "start_sec", end = "end_sec" }
+}
+
+struct IntroSkipResponse: Codable { let segments: [IntroSkipSegment] }
+
 struct EpisodeSubtitleTrack: Codable, Equatable, Identifiable {
     let lang: String
     let label: String

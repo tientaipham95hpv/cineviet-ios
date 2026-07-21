@@ -38,6 +38,7 @@ struct PlayerView: View {
             else if controlsVisible { controlOverlay.transition(.opacity) }
             statusLayer
             if let count = viewModel.autoNextCountdown { autoNextCard(count) }
+            if let segment = viewModel.activeIntroSkip { introSkipButton(segment) }
         }
         .ignoresSafeArea()
         .foregroundStyle(.white)
@@ -218,6 +219,11 @@ struct PlayerView: View {
             Text(viewModel.nextEpisode?.name ?? "Tập tiếp theo").font(.headline)
             HStack { Button("Xem ngay") { viewModel.playNextEpisode() }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black); Button("Hủy") { viewModel.cancelAutoNext() }.buttonStyle(.bordered) }
         }.padding(16).background(.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 16)).overlay { RoundedRectangle(cornerRadius: 16).stroke(CineVietTheme.accent.opacity(0.35)) }.frame(maxWidth: 330); Spacer().frame(width: 24) }.padding(.bottom, 24) }
+    }
+
+    private func introSkipButton(_ segment: IntroSkipSegment) -> some View {
+        VStack { Spacer(); HStack { Spacer(); Button(segment.label) { viewModel.skipActiveIntro() }.buttonStyle(.borderedProminent).tint(CineVietTheme.accent).foregroundStyle(.black).padding(.trailing, 28).padding(.bottom, controlsVisible ? 125 : 32) } }
+            .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
     @ViewBuilder private func selectionPanel(_ panel: PlayerPanel) -> some View {
