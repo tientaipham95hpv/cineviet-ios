@@ -527,7 +527,7 @@ private struct CommentsSheet: View {
         let inheritedMembership = belongsToCurrentUser(item) && (container.currentUser?.isVip == true || currentUserIsAdmin)
         let showsVIPFrame = item.isVip || item.isAdmin || inheritedMembership
         let showsAdminTag = item.isAdmin || (belongsToCurrentUser(item) && currentUserIsAdmin)
-        HStack(alignment: .top, spacing: 12) {
+        return HStack(alignment: .top, spacing: 12) {
             UserAvatar(name: item.userName, url: URL(string: item.avatar ?? container.currentUser.flatMap { belongsToCurrentUser(item) ? $0.avatar : nil } ?? ""), isVIP: showsVIPFrame, size: 42)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
