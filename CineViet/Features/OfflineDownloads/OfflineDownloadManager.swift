@@ -14,175 +14,154 @@ struct OfflineDownloadItem: Codable, Identifiable, Hashable {
     var state: OfflineDownloadState; let createdAt: Date; var localManifestPath: String
     var receivedBytes: Int64; var totalBytes: Int64; var progress: Double; var error: String; var taskIdentifier: Int?
     var isActive: Bool { state == .queued || state == .downloading }
-    static func stableID(movieId: Int, slug: String, server: String, episode: String) -> String {
-        Data("\(movieId)|\(slug)|\(server)|\(episode)".utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    static func stableID(movieId: Int, slug: String, server: String, episode: String) -> String { Data("\(movieId)|\(slug)|\(server)|\(episode)".utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") }
+}
+
+private struct OfflineResource: Codable, Hashable {
+    enum State: String, Codable { case pending, running, complete }
+    var id: String; var remote: String; var relativePath: String; var reference: String; var manifest: String?; var optional: Bool; var state: State; var bytes: Int64
+}
+private struct OfflineCheckpoint: Codable {
+    var resources: [OfflineResource]; var manifests: [String: String]; var localAudio: [OfflineTrack]; var localSubtitles: [OfflineTrack]
+}
+private struct TaskIdentity: Codable { let item: String; let resource: String }
+private struct HLSResource { let reference: String; let url: URL; let kind: String }
+
+private final class OfflineSessionDelegate: NSObject, URLSessionDownloadDelegate, URLSessionDelegate, @unchecked Sendable {
+    weak var owner: OfflineDownloadManager?
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        // The system removes `location` when this delegate method returns. Move
+        // it synchronously into an owned staging file before hopping actors.
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        do {
+            try FileManager.default.moveItem(at: location, to: staging)
+        } catch {
+            let description = downloadTask.taskDescription
+            Task { @MainActor [weak owner] in owner?.downloadFailed(description: description, error: error) }
+            return
+        }
+        let description = downloadTask.taskDescription
+        Task { @MainActor [weak owner] in owner?.downloadFinished(description: description, stagedURL: staging, response: downloadTask.response) }
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let error else { return }; let description = task.taskDescription
+        Task { @MainActor [weak owner] in owner?.downloadFailed(description: description, error: error) }
+    }
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        Task { @MainActor [weak owner] in owner?.finishBackgroundEvents() }
     }
 }
 
 @MainActor
 final class OfflineDownloadManager: NSObject, ObservableObject {
-    static let shared = OfflineDownloadManager()
-    static let backgroundIdentifier = "live.cineviet.ios.offline-hls"
-    @Published private(set) var items: [OfflineDownloadItem] = []
-    @Published private(set) var loadError: String?
-    private var loaded = false
-    private var jobs: [String: Task<Void, Never>] = [:]
-    private var tombstones = Set<String>()
-    private var persistRetry: Task<Void, Never>?
-    private var indexURL: URL { rootURL.appendingPathComponent("downloads.json") }
+    static let shared = OfflineDownloadManager(); static let backgroundIdentifier = "live.cineviet.ios.offline-hls"
+    @Published private(set) var items: [OfflineDownloadItem] = []; @Published private(set) var loadError: String?
+    private var loaded = false; private var tombstones = Set<String>(); private var paused = Set<String>(); private var completionHandler: (() -> Void)?
+    private let delegate = OfflineSessionDelegate(); private lazy var session: URLSession = {
+        let c = URLSessionConfiguration.background(withIdentifier: Self.backgroundIdentifier); c.sessionSendsLaunchEvents = true; c.isDiscretionary = false; c.waitsForConnectivity = true; c.httpMaximumConnectionsPerHost = 4
+        return URLSession(configuration: c, delegate: delegate, delegateQueue: nil)
+    }()
     private var rootURL: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("OfflineDownloads", isDirectory: true) }
+    private var indexURL: URL { rootURL.appendingPathComponent("downloads.json") }
+    override private init() { super.init(); delegate.owner = self; _ = session }
 
-    func handleBackgroundEvents(completionHandler: @escaping () -> Void) { DispatchQueue.main.async { completionHandler() } }
+    func handleBackgroundEvents(completionHandler: @escaping () -> Void) { self.completionHandler = completionHandler; _ = session }
+    fileprivate func finishBackgroundEvents() { let handler = completionHandler; completionHandler = nil; handler?() }
 
     func load(force: Bool = false) async {
-        guard force || !loaded else { return }; loaded = true; loadError = nil
-        do {
-            try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-            if FileManager.default.fileExists(atPath: indexURL.path) {
-                var decoded = try JSONDecoder.offline.decode([OfflineDownloadItem].self, from: Data(contentsOf: indexURL)).filter { !$0.id.isEmpty }
-                var seen = Set<String>(); decoded = decoded.filter { seen.insert($0.id).inserted }
-                for index in decoded.indices {
-                    decoded[index].localManifestPath = migratePath(decoded[index].localManifestPath, id: decoded[index].id)
-                    if decoded[index].isActive { decoded[index].state = .cancelled; decoded[index].error = "Tác vụ bị gián đoạn. Nhấn thử lại để tiếp tục."; decoded[index].taskIdentifier = nil }
-                    if decoded[index].state == .completed, !fileExists(decoded[index]) { decoded[index].state = .failed; decoded[index].error = "Bản tải xuống không còn trên thiết bị" }
-                }
-                items = decoded
-            }
-            try persistNow()
-        } catch { loadError = "Không đọc hoặc lưu được thư viện tải xuống." }
+        guard force || !loaded else { return }; loaded = true
+        do { try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true); if FileManager.default.fileExists(atPath: indexURL.path) { items = try JSONDecoder.offline.decode([OfflineDownloadItem].self, from: Data(contentsOf: indexURL)) }; try persistNow() } catch { loadError = "Không đọc hoặc lưu được thư viện tải xuống." }
+        let tasks = await allTasks(); let active = Set(tasks.compactMap { identity($0.taskDescription)?.item })
+        for i in items.indices where items[i].isActive && !active.contains(items[i].id) { items[i].state = .queued }
+        persist(); for item in items where item.isActive { reconcile(item.id, existing: tasks) }
     }
 
     func enqueue(movie: Movie, server: EpisodeServer, episode: EpisodeItem, selectedAudioKeys: Set<String>? = nil, selectedSubtitleKeys: Set<String>? = nil) async throws {
-        guard let source = Self.eligibleURL(episode), source.pathExtension.lowercased() == "m3u8" || source.absoluteString.lowercased().contains("m3u8") else { throw OfflineError.unsupported }
-        await ensureLoaded()
-        let id = OfflineDownloadItem.stableID(movieId: movie.id, slug: movie.slug, server: server.name, episode: episode.name)
-        if jobs[id] != nil { return }
-        if let old = items.first(where: { $0.id == id }), old.state == .completed, fileExists(old) { return }
-        tombstones.remove(id)
-        let audio = episode.audioSources.compactMap { source -> OfflineTrack? in
-            guard selectedAudioKeys?.contains(source.key) != false, Self.remoteURL(source.url) != nil else { return nil }
-            return OfflineTrack(key: source.key, label: source.label, url: source.url, language: nil, format: nil)
-        }
-        let subtitles = episode.subtitles.compactMap { subtitle -> OfflineTrack? in
-            guard selectedSubtitleKeys?.contains(subtitle.lang) != false, Self.remoteURL(subtitle.url) != nil else { return nil }
-            return OfflineTrack(key: subtitle.lang, label: subtitle.label, url: subtitle.url, language: subtitle.lang, format: subtitle.format)
-        }
-        let item = OfflineDownloadItem(id: id, movieId: movie.id, movieSlug: movie.slug, movieTitle: movie.title, episodeName: episode.name, serverName: server.name, sourceURL: source.absoluteString, posterURL: movie.posterURL?.absoluteString ?? "", audioSources: audio, subtitles: subtitles, state: .queued, createdAt: items.first(where: { $0.id == id })?.createdAt ?? Date(), localManifestPath: "", receivedBytes: 0, totalBytes: 0, progress: 0, error: "", taskIdentifier: nil)
-        try replaceAndPersist(item)
-        start(id)
+        guard let source = Self.eligibleURL(episode), source.absoluteString.lowercased().contains("m3u8") else { throw OfflineError.unsupported }; await ensureLoaded()
+        let id = OfflineDownloadItem.stableID(movieId: movie.id, slug: movie.slug, server: server.name, episode: episode.name); if let old = items.first(where: {$0.id == id}), old.state == .completed, fileExists(old) { return }
+        tombstones.remove(id); paused.remove(id)
+        let audio = episode.audioSources.compactMap { selectedAudioKeys?.contains($0.key) != false && Self.remoteURL($0.url) != nil ? OfflineTrack(key:$0.key,label:$0.label,url:$0.url,language:nil,format:nil) : nil }
+        let subtitles = episode.subtitles.compactMap { selectedSubtitleKeys?.contains($0.lang) != false && Self.remoteURL($0.url) != nil ? OfflineTrack(key:$0.lang,label:$0.label,url:$0.url,language:$0.lang,format:$0.format) : nil }
+        let item = OfflineDownloadItem(id:id,movieId:movie.id,movieSlug:movie.slug,movieTitle:movie.title,episodeName:episode.name,serverName:server.name,sourceURL:source.absoluteString,posterURL:movie.posterURL?.absoluteString ?? "",audioSources:audio,subtitles:subtitles,state:.queued,createdAt:Date(),localManifestPath:"",receivedBytes:0,totalBytes:0,progress:0,error:"",taskIdentifier:nil)
+        if let i=items.firstIndex(where:{$0.id==id}) { items[i]=item } else { items.insert(item,at:0) }; try persistNow()
+        do { try await prepare(id); reconcile(id, existing: await allTasks()) } catch { update(id){$0.state = .failed; $0.error=(error as? LocalizedError)?.errorDescription ?? error.localizedDescription} }
     }
 
     func retry(_ id: String) async {
-        await ensureLoaded(); guard jobs[id] == nil, items.contains(where: { $0.id == id }) else { return }
-        tombstones.remove(id); try? FileManager.default.removeItem(at: itemDirectory(id))
-        update(id) { $0.localManifestPath = ""; $0.error = ""; $0.progress = 0; $0.receivedBytes = 0; $0.totalBytes = 0 }
-        start(id)
+        await ensureLoaded(); tombstones.remove(id); paused.remove(id); update(id){$0.state = .queued;$0.error=""}
+        if loadCheckpoint(id) == nil {
+            do { try await prepare(id) } catch { update(id){$0.state = .failed; $0.error=(error as? LocalizedError)?.errorDescription ?? error.localizedDescription}; return }
+        }
+        reconcile(id, existing: await allTasks())
     }
+    func cancel(_ id: String) async { await ensureLoaded(); paused.insert(id); for t in await allTasks() where identity(t.taskDescription)?.item == id { t.cancel() }; update(id){$0.state = .cancelled;$0.error="Đã hủy";$0.taskIdentifier=nil} }
+    func delete(_ id: String) async { await ensureLoaded(); tombstones.insert(id); paused.remove(id); for t in await allTasks() where identity(t.taskDescription)?.item == id { t.cancel() }; try? FileManager.default.removeItem(at:itemDirectory(id)); items.removeAll{$0.id==id}; persist() }
+    func deleteMovie(_ ids:[String]) async { for id in ids { await delete(id) } }
 
-    func cancel(_ id: String) async { await ensureLoaded(); jobs[id]?.cancel(); jobs[id] = nil; update(id) { $0.state = .cancelled; $0.error = "Đã hủy"; $0.taskIdentifier = nil } }
-    func delete(_ id: String) async { await ensureLoaded(); tombstones.insert(id); jobs[id]?.cancel(); jobs[id] = nil; try? FileManager.default.removeItem(at: itemDirectory(id)); items.removeAll { $0.id == id }; persist() }
-    func deleteMovie(_ ids: [String]) async { await ensureLoaded(); let deleting = Set(ids); tombstones.formUnion(deleting); for id in deleting { jobs[id]?.cancel(); jobs[id] = nil; try? FileManager.default.removeItem(at: itemDirectory(id)) }; items.removeAll { deleting.contains($0.id) }; persist() }
+    func playbackURL(for item: OfflineDownloadItem)->URL? { let u=resolvedURL(item); guard FileManager.default.fileExists(atPath:u.path) else{return nil}; return OfflineLoopbackServer.shared.register(directory:u.deletingLastPathComponent(),id:item.id) }
+    static func serverEligible(_ server: EpisodeServer)->Bool { let n=server.name.folding(options:[.diacriticInsensitive,.caseInsensitive],locale:.current).replacingOccurrences(of:" ",with:"").lowercased(); return n != "nguonc" && !server.items.contains{($0.linkEmbed+$0.linkM3u8).lowercased().contains("streamc.xyz")} && server.items.contains{eligibleURL($0) != nil} }
+    static func eligibleURL(_ episode:EpisodeItem)->URL? { guard !episode.linkM3u8.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, let u=PlayerViewModel.directMediaURL(for:episode), !u.absoluteString.lowercased().contains("/embed") else{return nil}; return u }
 
-    func playbackURL(for item: OfflineDownloadItem) -> URL? {
-        let manifest = resolvedURL(item)
-        guard FileManager.default.fileExists(atPath: manifest.path) else { return nil }
-        return OfflineLoopbackServer.shared.register(directory: manifest.deletingLastPathComponent(), id: item.id)
-    }
-    static func serverEligible(_ server: EpisodeServer) -> Bool { let normalized = server.name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current).replacingOccurrences(of: " ", with: "").lowercased(); guard normalized != "nguonc", !server.items.contains(where: { ($0.linkEmbed + $0.linkM3u8).lowercased().contains("streamc.xyz") }) else { return false }; return server.items.contains { eligibleURL($0) != nil } }
-    static func eligibleURL(_ episode: EpisodeItem) -> URL? { guard !episode.linkM3u8.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let url = PlayerViewModel.directMediaURL(for: episode), !url.absoluteString.lowercased().contains("/embed") else { return nil }; return url }
-
-    private func start(_ id: String) {
-        update(id) { $0.state = .downloading; $0.error = ""; $0.progress = 0 }
-        jobs[id] = Task { [weak self] in
-            guard let self else { return }
-            do { try await self.download(id) }
-            catch is CancellationError { self.update(id) { $0.state = .cancelled; $0.error = "Đã hủy" } }
-            catch { self.update(id) { $0.state = .failed; $0.error = (error as? LocalizedError)?.errorDescription ?? "Lỗi mạng khi tải video" } }
-            self.jobs[id] = nil
+    private func prepare(_ id:String) async throws {
+        guard let item=items.first(where:{$0.id==id}), let source=URL(string:item.sourceURL) else{throw OfflineError.unsupported}; try FileManager.default.createDirectory(at:itemDirectory(id),withIntermediateDirectories:true)
+        var cp = loadCheckpoint(id) ?? OfflineCheckpoint(resources:[],manifests:[:],localAudio:[],localSubtitles:[])
+        if cp.resources.isEmpty {
+            try await appendHLS(source, folder:"", prefix:"main", optional:false, checkpoint:&cp)
+            for (i,t) in item.audioSources.enumerated() { guard let u=Self.remoteURL(t.url) else{continue}; do { try await appendHLS(u,folder:"audio_\(i)",prefix:"audio",optional:true,checkpoint:&cp); cp.localAudio.append(OfflineTrack(key:t.key,label:t.label,url:"audio_\(i)/index.m3u8",language:t.language,format:t.format)) } catch {} }
+            for (i,t) in item.subtitles.enumerated() { guard let u=Self.remoteURL(t.url) else{continue}; let ext=(t.format?.isEmpty==false ? t.format! : (u.pathExtension.isEmpty ? "vtt":u.pathExtension)); cp.resources.append(OfflineResource(id:"subtitle-\(i)",remote:u.absoluteString,relativePath:"subtitle_\(i).\(ext)",reference:u.absoluteString,manifest:nil,optional:true,state:.pending,bytes:0)); cp.localSubtitles.append(OfflineTrack(key:t.key,label:t.label,url:"subtitle_\(i).\(ext)",language:t.language,format:ext)) }
+            try saveCheckpoint(cp,id:id)
         }
     }
-
-    private func download(_ id: String) async throws {
-        guard let item = items.first(where: { $0.id == id }), let source = URL(string: item.sourceURL) else { throw OfflineError.unsupported }
-        let directory = itemDirectory(id); try? FileManager.default.removeItem(at: directory); try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        var manifestURL = source
-        var manifest = try await text(from: manifestURL)
-        guard manifest.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("#EXTM3U") else { throw OfflineError.notHLS }
-        if manifest.contains("#EXT-X-STREAM-INF") {
-            guard let variant = bestVariant(in: manifest, relativeTo: manifestURL) else { throw OfflineError.noVariant }
-            manifestURL = variant; manifest = try await text(from: manifestURL)
-        }
-        guard !manifest.contains("METHOD=SAMPLE-AES"), !manifest.contains("KEYFORMAT=") else { throw OfflineError.drm }
-        let resources = manifestResources(in: manifest, relativeTo: manifestURL)
-        guard !resources.isEmpty else { throw OfflineError.empty }
-        update(id) { $0.totalBytes = Int64(resources.count); $0.receivedBytes = 0 }
-        var rewritten = manifest; var bytes: Int64 = 0
-        for (index, resource) in resources.enumerated() {
-            try Task.checkCancellation(); guard !tombstones.contains(id) else { throw CancellationError() }
-            let name = "\(resource.kind)_\(String(format: "%05d", index)).\(fileExtension(for: resource))"
-            let data = try await data(from: resource.url)
-            try data.write(to: directory.appendingPathComponent(name), options: [.atomic]); bytes += Int64(data.count)
-            rewritten = rewrite(rewritten, remote: resource.reference, local: name)
-            let done = index + 1; update(id) { $0.receivedBytes = bytes; $0.totalBytes = max($0.totalBytes, bytes); $0.progress = min(Double(done) / Double(resources.count), 0.99) }
-        }
-        try Task.checkCancellation(); guard !tombstones.contains(id) else { throw CancellationError() }
-        let manifestFile = directory.appendingPathComponent("index.m3u8"); try rewritten.data(using: .utf8)?.write(to: manifestFile, options: [.atomic])
-        var localAudio: [OfflineTrack] = []
-        for (index, track) in item.audioSources.enumerated() {
-            guard let remote = Self.remoteURL(track.url) else { continue }
-            if remote.absoluteString == source.absoluteString { localAudio.append(OfflineTrack(key: track.key, label: track.label, url: "index.m3u8", language: track.language, format: track.format)); continue }
-            do {
-                let folder = directory.appendingPathComponent("audio_\(index)", isDirectory: true)
-                let result = try await downloadHLS(remote, into: folder, prefix: "audio")
-                bytes += result.bytes
-                localAudio.append(OfflineTrack(key: track.key, label: track.label, url: "audio_\(index)/index.m3u8", language: track.language, format: track.format))
-            } catch is CancellationError { throw CancellationError() } catch { }
-        }
-        var localSubtitles: [OfflineTrack] = []
-        for (index, track) in item.subtitles.enumerated() {
-            guard let remote = Self.remoteURL(track.url) else { continue }
-            do {
-                let format = (track.format?.isEmpty == false ? track.format! : (remote.pathExtension.isEmpty ? "vtt" : remote.pathExtension)).lowercased()
-                let name = "subtitle_\(index).\(format)"; let subtitle = try await data(from: remote); try subtitle.write(to: directory.appendingPathComponent(name), options: [.atomic]); bytes += Int64(subtitle.count)
-                localSubtitles.append(OfflineTrack(key: track.key, label: track.label, url: name, language: track.language, format: format))
-            } catch is CancellationError { throw CancellationError() } catch { }
-        }
-        update(id) { $0.state = .completed; $0.localManifestPath = "\(id)/index.m3u8"; $0.audioSources = localAudio; $0.subtitles = localSubtitles; $0.progress = 1; $0.receivedBytes = bytes; $0.totalBytes = bytes; $0.taskIdentifier = nil; $0.error = "" }
+    private func appendHLS(_ source:URL, folder:String, prefix:String, optional:Bool, checkpoint cp:inout OfflineCheckpoint) async throws {
+        var base=source; var text=try await fetchText(base); guard text.trimmingCharacters(in:.whitespacesAndNewlines).hasPrefix("#EXTM3U") else{throw OfflineError.notHLS}
+        if text.contains("#EXT-X-STREAM-INF") { guard let v=bestVariant(in:text,relativeTo:base) else{throw OfflineError.noVariant}; base=v;text=try await fetchText(v) }
+        guard !text.contains("METHOD=SAMPLE-AES"), !text.contains("KEYFORMAT=") else{throw OfflineError.drm}; let rs=manifestResources(in:text,relativeTo:base); guard !rs.isEmpty else{throw OfflineError.empty}
+        let manifestKey=folder.isEmpty ? "index.m3u8":"\(folder)/index.m3u8"; cp.manifests[manifestKey]=text
+        for (i,r) in rs.enumerated() { let path=(folder.isEmpty ? "":"\(folder)/")+"\(prefix)_\(r.kind)_\(String(format:"%05d",i)).\(fileExtension(r))"; cp.resources.append(OfflineResource(id:"\(prefix)-\(folder)-\(i)",remote:r.url.absoluteString,relativePath:path,reference:r.reference,manifest:manifestKey,optional:optional,state:.pending,bytes:0)) }
     }
-
-    private static func remoteURL(_ value: String) -> URL? { guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }; return url }
-    private func downloadHLS(_ source: URL, into directory: URL, prefix: String) async throws -> (bytes: Int64, files: Int) {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        var manifestURL = source; var manifest = try await text(from: manifestURL)
-        guard manifest.hasPrefix("#EXTM3U") else { throw OfflineError.notHLS }
-        if manifest.contains("#EXT-X-STREAM-INF") { guard let variant = bestVariant(in: manifest, relativeTo: manifestURL) else { throw OfflineError.noVariant }; manifestURL = variant; manifest = try await text(from: manifestURL) }
-        guard !manifest.contains("METHOD=SAMPLE-AES"), !manifest.contains("KEYFORMAT=") else { throw OfflineError.drm }
-        let resources = manifestResources(in: manifest, relativeTo: manifestURL); guard !resources.isEmpty else { throw OfflineError.empty }
-        var rewritten = manifest; var bytes: Int64 = 0
-        for (index, resource) in resources.enumerated() { try Task.checkCancellation(); let name = "\(prefix)_\(resource.kind)_\(String(format: "%05d", index)).\(fileExtension(for: resource))"; let payload = try await data(from: resource.url); try payload.write(to: directory.appendingPathComponent(name), options: [.atomic]); bytes += Int64(payload.count); rewritten = rewrite(rewritten, remote: resource.reference, local: name) }
-        try rewritten.data(using: .utf8)?.write(to: directory.appendingPathComponent("index.m3u8"), options: [.atomic]); return (bytes, resources.count)
+    private func reconcile(_ id:String, existing:[URLSessionTask]) {
+        guard !tombstones.contains(id), var cp=loadCheckpoint(id) else{return}; let running=Set(existing.compactMap{identity($0.taskDescription)}.filter{$0.item==id}.map{$0.resource})
+        for i in cp.resources.indices { let file=itemDirectory(id).appendingPathComponent(cp.resources[i].relativePath); if FileManager.default.fileExists(atPath:file.path){cp.resources[i].state = .complete} else if !running.contains(cp.resources[i].id){cp.resources[i].state = .pending} }
+        try? saveCheckpoint(cp,id:id); schedule(id,checkpoint:cp)
     }
-    private func request(_ url: URL) -> URLRequest { var request = URLRequest(url: url); request.timeoutInterval = 120; request.setValue(AppEnvironment.siteBaseURL.absoluteString, forHTTPHeaderField: "Origin"); request.setValue(AppEnvironment.siteBaseURL.appendingPathComponent("").absoluteString, forHTTPHeaderField: "Referer"); request.setValue(AppEnvironment.userAgent, forHTTPHeaderField: "User-Agent"); return request }
-    private func data(from url: URL) async throws -> Data { let (data, response) = try await URLSession.shared.data(for: request(url)); guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { throw OfflineError.sourceUnavailable }; return data }
-    private func text(from url: URL) async throws -> String { guard let value = String(data: try await data(from: url), encoding: .utf8) else { throw OfflineError.notHLS }; return value }
-    private func bestVariant(in manifest: String, relativeTo base: URL) -> URL? { let lines = manifest.components(separatedBy: .newlines); var values: [(Int, URL)] = []; for i in lines.indices where lines[i].trimmingCharacters(in: .whitespaces).hasPrefix("#EXT-X-STREAM-INF:") { let line = lines[i]; let bandwidth = Int(line.firstMatch(#"BANDWIDTH=(\d+)"#) ?? "0") ?? 0; var j = i + 1; while j < lines.count { let candidate = lines[j].trimmingCharacters(in: .whitespacesAndNewlines); if !candidate.isEmpty { if !candidate.hasPrefix("#"), let url = URL(string: candidate, relativeTo: base)?.absoluteURL { values.append((bandwidth, url)) }; break }; j += 1 } }; return values.max { $0.0 < $1.0 }?.1 }
-    private func manifestResources(in manifest: String, relativeTo base: URL) -> [HLSResource] { var result: [HLSResource] = []; var seen = Set<String>(); for raw in manifest.components(separatedBy: .newlines) { let line = raw.trimmingCharacters(in: .whitespacesAndNewlines); if line.isEmpty { continue }; if !line.hasPrefix("#"), seen.insert(line).inserted, let url = URL(string: line, relativeTo: base)?.absoluteURL { result.append(HLSResource(reference: line, url: url, kind: "segment")) } else if line.hasPrefix("#EXT-X-KEY:") || line.hasPrefix("#EXT-X-MAP:"), let reference = line.firstMatch(#"URI="([^"]+)""#), seen.insert(reference).inserted, let url = URL(string: reference, relativeTo: base)?.absoluteURL { result.append(HLSResource(reference: reference, url: url, kind: line.hasPrefix("#EXT-X-KEY:") ? "key" : "map")) } }; return result }
-    private func rewrite(_ manifest: String, remote: String, local: String) -> String { manifest.components(separatedBy: .newlines).map { line in let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines); if trimmed == remote { return local }; if (trimmed.hasPrefix("#EXT-X-KEY:") || trimmed.hasPrefix("#EXT-X-MAP:")) && line.contains("URI=\"\(remote)\"") { return line.replacingOccurrences(of: "URI=\"\(remote)\"", with: "URI=\"\(local)\"") }; return line }.joined(separator: "\n") }
-    private func fileExtension(for resource: HLSResource) -> String { if resource.kind == "key" { return "key" }; let ext = resource.url.pathExtension.lowercased(); if !ext.isEmpty, ext.count <= 5, ext.allSatisfy({ $0.isLetter || $0.isNumber }) { return ext }; return resource.kind == "map" ? "mp4" : "ts" }
+    private func schedule(_ id:String, checkpoint cp:OfflineCheckpoint) {
+        guard !tombstones.contains(id) else{return}; var cp=cp; var active=cp.resources.filter{$0.state == .running}.count; var started=0
+        for i in cp.resources.indices where cp.resources[i].state == .pending { guard active < 4, let u=URL(string:cp.resources[i].remote) else{continue}; let task=session.downloadTask(with:request(u)); task.taskDescription=encodeIdentity(TaskIdentity(item:id,resource:cp.resources[i].id)); cp.resources[i].state = .running; task.resume(); active += 1; started += 1 }
+        try? saveCheckpoint(cp,id:id); update(id){$0.state = .downloading;$0.taskIdentifier=nil}; if active == 0 && started == 0 { finalizeIfReady(id,checkpoint:cp) }
+    }
+    fileprivate func downloadFinished(description:String?, stagedURL:URL, response:URLResponse?) {
+        guard let key=identity(description), !tombstones.contains(key.item), var cp=loadCheckpoint(key.item), let i=cp.resources.firstIndex(where:{$0.id==key.resource}) else { try? FileManager.default.removeItem(at: stagedURL); return }
+        guard let http=response as? HTTPURLResponse,(200...299).contains(http.statusCode) else { try? FileManager.default.removeItem(at: stagedURL); cp.resources[i].state = .pending; try? saveCheckpoint(cp,id:key.item); if !paused.contains(key.item) { schedule(key.item,checkpoint:cp) }; return }
+        let target=itemDirectory(key.item).appendingPathComponent(cp.resources[i].relativePath); do { try FileManager.default.createDirectory(at:target.deletingLastPathComponent(),withIntermediateDirectories:true); if FileManager.default.fileExists(atPath:target.path){try FileManager.default.removeItem(at:target)}; try FileManager.default.moveItem(at:stagedURL,to:target); cp.resources[i].state = .complete; cp.resources[i].bytes=(try? FileManager.default.attributesOfItem(atPath:target.path)[.size] as? NSNumber)?.int64Value ?? 0; try saveCheckpoint(cp,id:key.item); updateProgress(key.item,cp); if !paused.contains(key.item) { schedule(key.item,checkpoint:cp) } } catch { try? FileManager.default.removeItem(at: stagedURL); downloadFailed(description:description,error:error) }
+    }
+    fileprivate func downloadFailed(description:String?, error:Error) {
+        guard let key=identity(description), !tombstones.contains(key.item), var cp=loadCheckpoint(key.item), let i=cp.resources.firstIndex(where:{$0.id==key.resource}) else{return}
+        cp.resources[i].state = .pending; try? saveCheckpoint(cp,id:key.item)
+        guard !paused.contains(key.item) else { return }
+        if cp.resources[i].optional { schedule(key.item,checkpoint:cp) } else { update(key.item){$0.state = .failed;$0.error=error.localizedDescription} }
+    }
+    private func finalizeIfReady(_ id:String,checkpoint cp:OfflineCheckpoint) {
+        let required=cp.resources.filter{!$0.optional}; guard required.allSatisfy({$0.state == .complete}) else{return}; var written=false
+        for (path,var manifest) in cp.manifests { let related=cp.resources.filter{$0.manifest==path && $0.state == .complete}; if related.contains(where:{!$0.optional}) || related.count == cp.resources.filter({$0.manifest==path}).count { for r in related { manifest=rewrite(manifest,remote:r.reference,local:URL(fileURLWithPath:r.relativePath).lastPathComponent) }; let out=itemDirectory(id).appendingPathComponent(path); try? FileManager.default.createDirectory(at:out.deletingLastPathComponent(),withIntermediateDirectories:true); if (try? manifest.data(using:.utf8)?.write(to:out,options:.atomic)) != nil { if path=="index.m3u8"{written=true} } } }
+        guard written else{return}; let bytes=cp.resources.reduce(0){$0+$1.bytes}; update(id){$0.state = .completed;$0.localManifestPath="\(id)/index.m3u8";$0.audioSources=cp.localAudio.filter{FileManager.default.fileExists(atPath:self.itemDirectory(id).appendingPathComponent($0.url).path)};$0.subtitles=cp.localSubtitles.filter{FileManager.default.fileExists(atPath:self.itemDirectory(id).appendingPathComponent($0.url).path)};$0.progress=1;$0.receivedBytes=bytes;$0.totalBytes=bytes;$0.error=""}
+    }
+    private func updateProgress(_ id:String,_ cp:OfflineCheckpoint){let done=cp.resources.filter{$0.state == .complete}.count;let bytes=cp.resources.reduce(0){$0+$1.bytes};update(id){$0.receivedBytes=bytes;$0.totalBytes=Int64(cp.resources.count);$0.progress=min(Double(done)/Double(max(cp.resources.count,1)),0.99)}}
 
-    private func ensureLoaded() async { if !loaded { await load() } }
-    private func itemDirectory(_ id: String) -> URL { rootURL.appendingPathComponent(id, isDirectory: true) }
-    private func resolvedURL(_ item: OfflineDownloadItem) -> URL { let candidate = (item.localManifestPath.hasPrefix("/") ? URL(fileURLWithPath: item.localManifestPath) : rootURL.appendingPathComponent(item.localManifestPath)).standardizedFileURL; let root = rootURL.standardizedFileURL.path + "/"; guard candidate.path.hasPrefix(root), candidate.path == itemDirectory(item.id).appendingPathComponent("index.m3u8").standardizedFileURL.path else { return rootURL.appendingPathComponent(".invalid") }; return candidate }
-    private func fileExists(_ item: OfflineDownloadItem) -> Bool { !item.localManifestPath.isEmpty && FileManager.default.fileExists(atPath: resolvedURL(item).path) }
-    private func migratePath(_ path: String, id: String) -> String { guard !path.isEmpty else { return path }; if path == "\(id)/index.m3u8" { return path }; if path.hasSuffix("asset.movpkg") { return path }; return path }
-    private func replaceAndPersist(_ item: OfflineDownloadItem) throws { if let index = items.firstIndex(where: { $0.id == item.id }) { items[index] = item } else { items.insert(item, at: 0) }; try persistNow() }
-    private func update(_ id: String, _ body: (inout OfflineDownloadItem) -> Void) { guard !tombstones.contains(id), let index = items.firstIndex(where: { $0.id == id }) else { return }; body(&items[index]); persist() }
-    private func persist() { do { try persistNow(); loadError = nil } catch { loadError = "Không thể lưu thay đổi thư viện tải xuống."; schedulePersistRetry() } }
-    private func persistNow() throws { try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true); let data = try JSONEncoder.offline.encode(items); let temporary = indexURL.appendingPathExtension("tmp"); try data.write(to: temporary, options: [.atomic]); if FileManager.default.fileExists(atPath: indexURL.path) { _ = try FileManager.default.replaceItemAt(indexURL, withItemAt: temporary) } else { try FileManager.default.moveItem(at: temporary, to: indexURL) } }
-    private func schedulePersistRetry() { persistRetry?.cancel(); persistRetry = Task { try? await Task.sleep(nanoseconds: 1_000_000_000); guard !Task.isCancelled else { return }; do { try persistNow(); loadError = nil } catch { loadError = "Không thể lưu thay đổi thư viện tải xuống." } } }
+    private func allTasks() async->[URLSessionTask]{await withCheckedContinuation{c in session.getAllTasks{c.resume(returning:$0)}}}
+    private func checkpointURL(_ id:String)->URL{itemDirectory(id).appendingPathComponent("checkpoint.json")}; private func loadCheckpoint(_ id:String)->OfflineCheckpoint?{try? JSONDecoder.offline.decode(OfflineCheckpoint.self,from:Data(contentsOf:checkpointURL(id)))}
+    private func saveCheckpoint(_ cp:OfflineCheckpoint,id:String)throws{let u=checkpointURL(id);try FileManager.default.createDirectory(at:u.deletingLastPathComponent(),withIntermediateDirectories:true);try JSONEncoder.offline.encode(cp).write(to:u,options:.atomic)}
+    private func encodeIdentity(_ x:TaskIdentity)->String?{guard let d=try? JSONEncoder().encode(x) else{return nil};return d.base64EncodedString()}; private func identity(_ s:String?)->TaskIdentity?{guard let s,let d=Data(base64Encoded:s) else{return nil};return try? JSONDecoder().decode(TaskIdentity.self,from:d)}
+    private func request(_ u:URL)->URLRequest{var r=URLRequest(url:u);r.timeoutInterval=120;r.setValue(AppEnvironment.siteBaseURL.absoluteString,forHTTPHeaderField:"Origin");r.setValue(AppEnvironment.siteBaseURL.appendingPathComponent("").absoluteString,forHTTPHeaderField:"Referer");r.setValue(AppEnvironment.userAgent,forHTTPHeaderField:"User-Agent");return r}
+    private func fetchText(_ u:URL)async throws->String{let(d,r)=try await URLSession.shared.data(for:request(u));guard let h=r as? HTTPURLResponse,(200...299).contains(h.statusCode),let s=String(data:d,encoding:.utf8) else{throw OfflineError.sourceUnavailable};return s}
+    private func bestVariant(in m:String,relativeTo b:URL)->URL?{let l=m.components(separatedBy:.newlines);var v:[(Int,URL)]=[];for i in l.indices where l[i].contains("#EXT-X-STREAM-INF:"){let bw=Int(l[i].firstMatch(#"BANDWIDTH=(\d+)"#) ?? "0") ?? 0;var j=i+1;while j<l.count{let x=l[j].trimmingCharacters(in:.whitespacesAndNewlines);if !x.isEmpty{if !x.hasPrefix("#"),let u=URL(string:x,relativeTo:b)?.absoluteURL{v.append((bw,u))};break};j+=1}};return v.max{$0.0<$1.0}?.1}
+    private func manifestResources(in m:String,relativeTo b:URL)->[HLSResource]{var a:[HLSResource]=[];var seen=Set<String>();for raw in m.components(separatedBy:.newlines){let l=raw.trimmingCharacters(in:.whitespacesAndNewlines);if !l.hasPrefix("#"),!l.isEmpty,seen.insert(l).inserted,let u=URL(string:l,relativeTo:b)?.absoluteURL{a.append(HLSResource(reference:l,url:u,kind:"segment"))}else if (l.hasPrefix("#EXT-X-KEY:") || l.hasPrefix("#EXT-X-MAP:")),let x=l.firstMatch(#"URI="([^"]+)""#),seen.insert(x).inserted,let u=URL(string:x,relativeTo:b)?.absoluteURL{a.append(HLSResource(reference:x,url:u,kind:l.hasPrefix("#EXT-X-KEY:") ? "key":"map"))}};return a}
+    private func rewrite(_ m:String,remote:String,local:String)->String{m.components(separatedBy:.newlines).map{let x=$0.trimmingCharacters(in:.whitespacesAndNewlines);if x==remote{return local};return $0.replacingOccurrences(of:"URI=\"\(remote)\"",with:"URI=\"\(local)\"")}.joined(separator:"\n")}
+    private func fileExtension(_ r:HLSResource)->String{if r.kind=="key"{return "key"};let x=r.url.pathExtension.lowercased();return !x.isEmpty && x.count<7 ? x:(r.kind=="map" ? "mp4":"ts")}
+    private static func remoteURL(_ s:String)->URL?{guard let u=URL(string:s.trimmingCharacters(in:.whitespacesAndNewlines)),["http","https"].contains(u.scheme?.lowercased() ?? "") else{return nil};return u}
+    private func ensureLoaded()async{if !loaded{await load()}}; private func itemDirectory(_ id:String)->URL{rootURL.appendingPathComponent(id,isDirectory:true)}
+    private func resolvedURL(_ i:OfflineDownloadItem)->URL{let u=rootURL.appendingPathComponent(i.localManifestPath).standardizedFileURL;return u.path==itemDirectory(i.id).appendingPathComponent("index.m3u8").standardizedFileURL.path ? u:rootURL.appendingPathComponent(".invalid")}; private func fileExists(_ i:OfflineDownloadItem)->Bool{!i.localManifestPath.isEmpty && FileManager.default.fileExists(atPath:resolvedURL(i).path)}
+    private func update(_ id:String,_ body:(inout OfflineDownloadItem)->Void){guard !tombstones.contains(id),let i=items.firstIndex(where:{$0.id==id}) else{return};body(&items[i]);persist()}; private func persist(){do{try persistNow();loadError=nil}catch{loadError="Không thể lưu thay đổi thư viện tải xuống."}}; private func persistNow()throws{try FileManager.default.createDirectory(at:rootURL,withIntermediateDirectories:true);try JSONEncoder.offline.encode(items).write(to:indexURL,options:.atomic)}
 }
-
-private struct HLSResource { let reference: String; let url: URL; let kind: String }
 
 private final class OfflineLoopbackServer: @unchecked Sendable {
     static let shared = OfflineLoopbackServer()
