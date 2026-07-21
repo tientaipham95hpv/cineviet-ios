@@ -39,22 +39,29 @@ struct AccountView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 18) {
-                    profileHeader
-                    membershipCard
-                    settingsCard
-                    securityCard
-                    appCard
-                    logoutButton
-                    Color.clear.frame(height: 94)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 18) {
+                        Color.clear.frame(height: 0).id("account-top")
+                        profileHeader
+                        membershipCard
+                        settingsCard
+                        securityCard
+                        appCard
+                        logoutButton
+                        Color.clear.frame(height: 94)
+                    }
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
                 }
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .refreshable { await model.loadMembership() }
+                .onAppear { proxy.scrollTo("account-top", anchor: .top) }
+                .onReceive(NotificationCenter.default.publisher(for: .cineVietAccountTabSelected)) { _ in
+                    proxy.scrollTo("account-top", anchor: .top)
+                }
             }
-            .refreshable { await model.loadMembership() }
             .background(CineVietTheme.background.ignoresSafeArea())
             .navigationTitle("Tài khoản")
             .toolbar(.hidden, for: .navigationBar)
