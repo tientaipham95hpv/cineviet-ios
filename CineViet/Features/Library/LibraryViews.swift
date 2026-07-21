@@ -183,7 +183,33 @@ struct FavoritesView: View {
 
 private struct PlaylistRow: View {
     let playlist: CinePlaylist
-    var body: some View { HStack(spacing: 14) { ZStack { RoundedRectangle(cornerRadius: 16).fill(CineVietTheme.accent.opacity(0.16)); Image(systemName: "rectangle.stack.fill").font(.title2).foregroundStyle(CineVietTheme.accent) }.frame(width: 66, height: 72); VStack(alignment: .leading, spacing: 6) { Text(playlist.name).font(.headline).lineLimit(2); Text("\(playlist.movieCount) phim  •  \(playlist.isPublic ? "Công khai" : "Riêng tư")").font(.caption.weight(.medium)).foregroundStyle(CineVietTheme.textMuted); if !playlist.description.isEmpty { Text(playlist.description).font(.caption).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) } }; Spacer(); Image(systemName: "chevron.right").foregroundStyle(CineVietTheme.textMuted) }.padding(12).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 20)).overlay { RoundedRectangle(cornerRadius: 20).stroke(CineVietTheme.border, lineWidth: 1) }.accessibilityElement(children: .combine) }
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                LinearGradient(colors: [CineVietTheme.accent.opacity(0.32), CineVietTheme.accentDeep.opacity(0.12)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                Image(systemName: "play.rectangle.on.rectangle.fill").font(.title2).foregroundStyle(CineVietTheme.accent)
+            }
+            .frame(width: 72, height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(playlist.name).font(.headline).lineLimit(1)
+                HStack(spacing: 8) {
+                    Label("\(playlist.movieCount) phim", systemImage: "film.stack")
+                    Text("•")
+                    Label(playlist.isPublic ? "Công khai" : "Riêng tư", systemImage: playlist.isPublic ? "globe" : "lock.fill")
+                }
+                .font(.caption.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted)
+                if !playlist.description.isEmpty { Text(playlist.description).font(.caption).foregroundStyle(CineVietTheme.textMuted).lineLimit(1) }
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(CineVietTheme.textMuted)
+        }
+        .padding(12)
+        .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(CineVietTheme.border.opacity(0.8), lineWidth: 0.8) }
+        .accessibilityElement(children: .combine)
+    }
 }
 
 private struct HistoryRow: View {
@@ -235,42 +261,40 @@ struct PlaylistDetailView: View {
                 ProgressView("Đang tải playlist…")
             } else if let detail = viewModel.detail {
                 ScrollView {
-                    LazyVStack(spacing: 18) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Label(detail.playlist.isPublic ? "Công khai" : "Riêng tư", systemImage: detail.playlist.isPublic ? "globe" : "lock.fill")
-                                Spacer()
-                                Button("Chỉnh sửa") { showingEditor = true }
-                            }
-                            if !detail.playlist.description.isEmpty {
-                                Text(detail.playlist.description).foregroundStyle(CineVietTheme.textMuted)
-                            }
-                        }
-                        .padding(16)
-                        .cineGlass(cornerRadius: 20, tint: CineVietTheme.accent)
-                        .padding(.horizontal)
+                    LazyVStack(spacing: 20) {
+                        playlistHeader(detail)
 
                         if detail.movies.isEmpty {
-                            ContentMessage(icon: "rectangle.stack", title: "Playlist chưa có phim", message: "Thêm phim từ trang chi tiết.")
-                                .frame(minHeight: 280)
+                            ContentMessage(icon: "play.rectangle.on.rectangle", title: "Playlist chưa có phim", message: "Thêm phim từ trang chi tiết để xem lại sau.")
+                                .frame(minHeight: 300)
                         } else {
-                            ForEach(detail.movies) { movie in
-                                HStack {
-                                    Button { selectedMovie = movie } label: { MovieCardView(movie: movie) }
-                                        .buttonStyle(.plain)
-                                    Spacer()
-                                    Button(role: .destructive) { Task { await viewModel.remove(movie) } } label: {
-                                        Label("Gỡ", systemImage: "minus.circle.fill")
-                                    }
-                                    .frame(minWidth: 60)
-                                }
-                                .padding(.horizontal)
+                            HStack {
+                                Text("\(detail.movies.count) phim").font(.headline)
+                                Spacer()
+                                Text("Nhấn vào poster để xem chi tiết").font(.caption).foregroundStyle(CineVietTheme.textMuted)
                             }
-                            Button("Xoá playlist", role: .destructive) { confirmDelete = true }
-                                .buttonStyle(.bordered)
-                                .padding(.bottom, 30)
+                            .padding(.horizontal, 16)
+
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 142, maximum: 170), spacing: 14)], spacing: 22) {
+                                ForEach(detail.movies) { movie in
+                                    ZStack(alignment: .topTrailing) {
+                                        Button { selectedMovie = movie } label: { MovieCardView(movie: movie) }.buttonStyle(.plain)
+                                        Button(role: .destructive) { Task { await viewModel.remove(movie) } } label: {
+                                            Image(systemName: "xmark").font(.caption.bold()).frame(width: 34, height: 34)
+                                                .background(.ultraThinMaterial, in: Circle()).foregroundStyle(.white)
+                                                .overlay { Circle().stroke(.white.opacity(0.2), lineWidth: 0.8) }
+                                        }
+                                        .offset(x: 5, y: -5)
+                                        .accessibilityLabel("Xoá \(movie.title) khỏi playlist")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 34)
                         }
                     }
+                    .padding(.top, 12)
                 }
             } else if let error = viewModel.errorMessage {
                 ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được playlist", message: error)
@@ -299,6 +323,39 @@ struct PlaylistDetailView: View {
                 MovieDetailView(movie: movie, movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService)
             }
         }
+    }
+
+    private func playlistHeader(_ detail: PlaylistDetail) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous).fill(CineVietTheme.accent.opacity(0.16))
+                    Image(systemName: "play.rectangle.on.rectangle.fill").font(.title).foregroundStyle(CineVietTheme.accent)
+                }
+                .frame(width: 72, height: 72)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(detail.playlist.name).font(.title3.bold()).lineLimit(2)
+                    Label(detail.playlist.isPublic ? "Công khai" : "Riêng tư", systemImage: detail.playlist.isPublic ? "globe" : "lock.fill")
+                        .font(.caption.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted)
+                    if !detail.playlist.description.isEmpty {
+                        Text(detail.playlist.description).font(.subheadline).foregroundStyle(CineVietTheme.textMuted).lineLimit(3)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 10) {
+                Button { showingEditor = true } label: { Label("Chỉnh sửa", systemImage: "pencil") }
+                    .buttonStyle(.bordered).tint(CineVietTheme.accent)
+                Button(role: .destructive) { confirmDelete = true } label: { Label("Xoá playlist", systemImage: "trash") }
+                    .buttonStyle(.bordered).tint(.red)
+            }
+            .font(.subheadline.weight(.semibold))
+        }
+        .padding(16)
+        .cineGlass(cornerRadius: 22, tint: CineVietTheme.accent)
+        .padding(.horizontal, 16)
     }
 }
 
