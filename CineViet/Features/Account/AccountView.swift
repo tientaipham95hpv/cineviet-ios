@@ -142,6 +142,11 @@ struct AccountView: View {
                 HStack { Label("Đổi mật khẩu", systemImage: "key.fill"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(CineVietTheme.textMuted) }.frame(minHeight: 48).contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityHint("Mở màn hình đổi mật khẩu")
+            Divider()
+            NavigationLink { TVPairingView(service: service) } label: {
+                HStack { Label("Đăng nhập TV", systemImage: "tv.and.hifispeaker.fill"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(CineVietTheme.textMuted) }.frame(minHeight: 48).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityHint("Nhập mã hoặc quét QR để xác nhận đăng nhập TV")
         }
     }
 

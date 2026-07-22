@@ -9,6 +9,7 @@ protocol AuthenticationServicing {
     func changePassword(current: String, new: String) async throws
     func membershipSummary() async throws -> MembershipSummary
     func requireOfflineDownloadAccess() async throws
+    func confirmTV(code: String) async throws
     func logout() async throws
 }
 
@@ -91,6 +92,12 @@ final class AuthenticationService: AuthenticationServicing {
         guard identity.isVip || identity.isAdmin else { throw OfflineAccessError.vipRequired }
     }
 
+    func confirmTV(code: String) async throws {
+        let body = TVConfirmRequest(code: code.filter(\.isNumber))
+        let request = try APIRequest.json(method: .post, path: "/auth/tv/confirm", body: body, requiresAuthentication: true)
+        try await apiClient.send(request)
+    }
+
     func logout() async throws {
         let refreshToken = try? tokenStore.load()?.refreshToken
         if let refreshToken, !refreshToken.isEmpty {
@@ -120,6 +127,8 @@ final class AuthenticationService: AuthenticationServicing {
         if let data = try? JSONEncoder().encode(OfflineIdentity(user: user)) { defaults.set(data, forKey: Self.cachedUserKey) }
     }
 }
+
+private struct TVConfirmRequest: Encodable { let code: String }
 
 private struct OfflineDownloadSettings: Decodable {
     let offlineDownloadVipOnly: LossyBoolean
