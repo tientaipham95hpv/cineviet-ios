@@ -20,7 +20,7 @@ struct MainTabView: View {
             SearchView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(1)
             ShortDramaView(movieService: movieService).tag(2)
             LibraryView(movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService).tag(3)
-            AccountView(user: user, service: authenticationService, notificationService: notificationService, watchHistoryService: watchHistoryService, updateUser: updateUser, logout: logout).tag(4)
+            AccountView(user: user, service: authenticationService, notificationService: notificationService, watchHistoryService: watchHistoryService, watchTogetherService: watchTogetherService, updateUser: updateUser, logout: logout).tag(4)
         }
         .toolbar(.hidden, for: .tabBar)
         // The floating bar is visual chrome, not layout content. Using a

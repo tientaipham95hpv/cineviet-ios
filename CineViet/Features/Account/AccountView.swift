@@ -29,11 +29,12 @@ struct AccountView: View {
     let logout: () -> Void
     let notificationService: NotificationServicing
     let watchHistoryService: WatchHistoryServicing
+    let watchTogetherService: WatchTogetherService
     @StateObject private var model: AccountViewModel
     @State private var confirmsLogout = false
 
-    init(user: User, service: AuthenticationServicing, notificationService: NotificationServicing, watchHistoryService: WatchHistoryServicing, updateUser: @escaping (User) -> Void, logout: @escaping () -> Void) {
-        self.user = user; self.notificationService = notificationService; self.watchHistoryService = watchHistoryService; self.updateUser = updateUser; self.logout = logout
+    init(user: User, service: AuthenticationServicing, notificationService: NotificationServicing, watchHistoryService: WatchHistoryServicing, watchTogetherService: WatchTogetherService, updateUser: @escaping (User) -> Void, logout: @escaping () -> Void) {
+        self.user = user; self.notificationService = notificationService; self.watchHistoryService = watchHistoryService; self.watchTogetherService = watchTogetherService; self.updateUser = updateUser; self.logout = logout
         _model = StateObject(wrappedValue: AccountViewModel(service: service))
     }
 
@@ -153,6 +154,8 @@ struct AccountView: View {
     private var appCard: some View {
         card(title: "Ứng dụng", icon: "info.circle.fill") {
             NavigationLink { NotificationsView(service: notificationService) } label: { HStack { Label("Thông báo", systemImage: "bell.fill"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(CineVietTheme.textMuted) }.frame(minHeight: 48) }.buttonStyle(.plain).accessibilityHint("Mở thông báo và tùy chọn nhận thông báo")
+            Divider()
+            NavigationLink { WatchTogetherView(service: watchTogetherService, watchHistoryService: watchHistoryService) } label: { HStack { Label("Xem chung", systemImage: "person.2.wave.2.fill"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(CineVietTheme.textMuted) }.frame(minHeight: 48) }.buttonStyle(.plain).accessibilityHint("Vào hoặc tìm phòng xem chung")
             Divider()
             infoRow("Phiên bản", appBuildLabel, icon: "app.badge")
             Divider()
