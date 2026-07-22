@@ -7,18 +7,36 @@ struct OfflineDownloadsView: View {
     @State private var deleteItem: OfflineDownloadItem?
     @State private var deleteGroup: Group?
     @State private var message: String?
+    @State private var searchText = ""
+    @State private var filter: DownloadFilter = .all
 
+    private enum DownloadFilter: String, CaseIterable, Identifiable { case all = "Tất cả", completed = "Đã tải", active = "Đang tải", failed = "Lỗi"; var id: Self { self } }
     private struct Group: Identifiable { let id: String; let title: String; let poster: String; let items: [OfflineDownloadItem] }
+    private var filteredItems: [OfflineDownloadItem] {
+        manager.items.filter { item in
+            let matchesSearch = searchText.isEmpty || item.movieTitle.localizedCaseInsensitiveContains(searchText) || item.episodeName.localizedCaseInsensitiveContains(searchText)
+            let matchesFilter: Bool = switch filter { case .all: true; case .completed: item.state == .completed; case .active: item.isActive; case .failed: item.state == .failed || item.state == .cancelled }
+            return matchesSearch && matchesFilter
+        }
+    }
     private var groups: [Group] {
-        Dictionary(grouping: manager.items) { $0.movieId > 0 ? String($0.movieId) : $0.movieSlug }.map { key, value in Group(id: key, title: value.first?.movieTitle ?? "Phim", poster: value.first?.posterURL ?? "", items: value.sorted { episodeNumber($0.episodeName) < episodeNumber($1.episodeName) }) }.sorted { ($0.items.first?.createdAt ?? .distantPast) > ($1.items.first?.createdAt ?? .distantPast) }
+        Dictionary(grouping: filteredItems) { $0.movieId > 0 ? String($0.movieId) : $0.movieSlug }.map { key, value in Group(id: key, title: value.first?.movieTitle ?? "Phim", poster: value.first?.posterURL ?? "", items: value.sorted { episodeNumber($0.episodeName) < episodeNumber($1.episodeName) }) }.sorted { ($0.items.first?.createdAt ?? .distantPast) > ($1.items.first?.createdAt ?? .distantPast) }
     }
 
     var body: some View {
         List {
+            if !manager.items.isEmpty {
+                Section {
+                    Picker("Bộ lọc", selection: $filter) { ForEach(DownloadFilter.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
+                    HStack { Label("Dung lượng đã tải", systemImage: "internaldrive.fill"); Spacer(); Text(bytes(manager.items.reduce(0) { $0 + $1.receivedBytes })).foregroundStyle(CineVietTheme.textMuted) }
+                }
+            }
             if let error = manager.loadError { ContentMessage(icon: "exclamationmark.triangle", title: "Không tải được thư viện", message: error); Button("Thử lại") { Task { await manager.load(force: true) } } }
             else if manager.items.isEmpty { ContentMessage(icon: "arrow.down.circle", title: "Chưa có nội dung tải xuống", message: "Các tập phim đã tải sẽ xuất hiện tại đây.").listRowBackground(Color.clear) }
+            else if groups.isEmpty { ContentMessage(icon: "magnifyingglass", title: "Không tìm thấy nội dung", message: "Thử từ khóa hoặc bộ lọc khác.").listRowBackground(Color.clear) }
             else { ForEach(groups) { group in Section { DisclosureGroup { ForEach(group.items) { row($0) } } label: { groupHeader(group) } } } }
         }
+        .searchable(text: $searchText, prompt: "Tìm phim hoặc tập")
         .listStyle(.insetGrouped).scrollContentBackground(.hidden).background(CineVietTheme.background.ignoresSafeArea()).navigationTitle("Nội dung tải xuống")
         .task { await manager.load() }
         .fullScreenCover(item: $playback) { item in OfflinePlayerBridge(item: item, watchHistoryService: watchHistoryService) }
