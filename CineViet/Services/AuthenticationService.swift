@@ -10,6 +10,7 @@ protocol AuthenticationServicing {
     func membershipSummary() async throws -> MembershipSummary
     func requireOfflineDownloadAccess() async throws
     func confirmTV(code: String) async throws
+    func appUpdate(platform: String, build: String, version: String) async throws -> AppUpdateInfo
     func logout() async throws
 }
 
@@ -96,6 +97,10 @@ final class AuthenticationService: AuthenticationServicing {
         let body = TVConfirmRequest(code: code.filter(\.isNumber))
         let request = try APIRequest.json(method: .post, path: "/auth/tv/confirm", body: body, requiresAuthentication: true)
         try await apiClient.send(request)
+    }
+
+    func appUpdate(platform: String, build: String, version: String) async throws -> AppUpdateInfo {
+        try await apiClient.send(APIRequest(method: .get, path: "/app/version", queryItems: [URLQueryItem(name: "platform", value: platform), URLQueryItem(name: "build", value: build), URLQueryItem(name: "version", value: version)]))
     }
 
     func logout() async throws {

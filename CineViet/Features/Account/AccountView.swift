@@ -157,7 +157,7 @@ struct AccountView: View {
             Divider()
             NavigationLink { WatchTogetherView(service: watchTogetherService, watchHistoryService: watchHistoryService) } label: { HStack { Label("Xem chung", systemImage: "person.2.wave.2.fill"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(CineVietTheme.textMuted) }.frame(minHeight: 48) }.buttonStyle(.plain).accessibilityHint("Vào hoặc tìm phòng xem chung")
             Divider()
-            infoRow("Phiên bản", appBuildLabel, icon: "app.badge")
+            NavigationLink { UpdateInfoView(service: service) } label: { HStack { Label("Cập nhật ứng dụng", systemImage: "arrow.down.app.fill"); Spacer(); Text(appBuildLabel).foregroundStyle(CineVietTheme.textMuted); Image(systemName: "chevron.right").foregroundStyle(CineVietTheme.textMuted) }.frame(minHeight: 48) }.buttonStyle(.plain)
             Divider()
             infoRow("Tài khoản", user.id, icon: "number").textSelection(.enabled)
             Divider()
