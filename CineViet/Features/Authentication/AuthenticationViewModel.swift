@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import GoogleSignIn
 
 @MainActor
 final class AuthenticationViewModel: ObservableObject {
@@ -108,6 +109,7 @@ final class AuthenticationViewModel: ObservableObject {
         Task {
             do {
                 try await authenticationService.logout()
+                GIDSignIn.sharedInstance.signOut()
                 email = ""
                 password = ""
                 errorMessage = nil
