@@ -56,7 +56,10 @@ final class NotificationsViewModel: ObservableObject {
 
 struct NotificationsView: View {
     @StateObject private var model: NotificationsViewModel
+    @EnvironmentObject private var container: AppContainer
     @Environment(\.openURL) private var openURL
+    @State private var linkedMovie: Movie?
+    @State private var linkError: String?
 
     init(service: NotificationServicing) {
         _model = StateObject(wrappedValue: NotificationsViewModel(service: service))
@@ -91,6 +94,10 @@ struct NotificationsView: View {
         .refreshable { await model.load() }
         .task { if model.settings == nil { await model.load() } }
         .hidesFloatingNavigation()
+        .navigationDestination(item: $linkedMovie) { movie in
+            MovieDetailView(movie: movie, movieService: container.movieService, watchHistoryService: container.watchHistoryService, libraryService: container.libraryService)
+        }
+        .alert("Thông báo", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) { Button("OK") {} } message: { Text(linkError ?? "") }
     }
 
     @ViewBuilder private var notificationList: some View {
@@ -134,7 +141,9 @@ struct NotificationsView: View {
 
     private func notificationCard(_ item: UserNotification, isUnread: Bool) -> some View {
         Button {
-            if let url = item.externalURL { openURL(url) }
+            guard let url = item.externalURL else { return }
+            if let slug = movieSlug(from: url) { Task { await openMovie(slug) } }
+            else { openURL(url) }
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Circle().fill(isUnread ? CineVietTheme.accent : CineVietTheme.border).frame(width: 9, height: 9).padding(.top, 7)
@@ -150,6 +159,18 @@ struct NotificationsView: View {
         }
         .buttonStyle(.plain).disabled(item.externalURL == nil)
         .accessibilityLabel("\(isUnread ? "Chưa đọc. " : "")\(item.title). \(item.description ?? "")")
-        .accessibilityHint(item.externalURL == nil ? "" : "Mở liên kết trong trình duyệt")
+        .accessibilityHint(item.externalURL == nil ? "" : "Mở nội dung thông báo")
+    }
+
+    private func movieSlug(from url: URL) -> String? {
+        guard url.host?.lowercased() == AppEnvironment.siteBaseURL.host?.lowercased() else { return nil }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        guard let marker = parts.firstIndex(where: { ["phim", "movie", "movies"].contains($0.lowercased()) }), parts.indices.contains(marker + 1) else { return nil }
+        return parts[marker + 1].removingPercentEncoding ?? parts[marker + 1]
+    }
+
+    private func openMovie(_ slug: String) async {
+        do { linkedMovie = try await container.movieService.detail(idOrSlug: slug) }
+        catch { linkError = "Không mở được phim từ thông báo." }
     }
 }
