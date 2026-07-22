@@ -44,6 +44,7 @@ struct GoogleLoginRequest: Encodable {
 
 struct ProfileUpdateRequest: Encodable {
     let name: String
+    let avatar: String?
 }
 
 struct ChangePasswordRequest: Encodable {

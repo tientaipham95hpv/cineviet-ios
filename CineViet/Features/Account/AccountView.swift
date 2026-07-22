@@ -17,7 +17,11 @@ final class AccountViewModel: ObservableObject {
         catch { errorMessage = message(error, fallback: "Không tải được thông tin đặc quyền.") }
     }
 
-    func updateName(_ name: String) async throws -> User { try await service.updateProfile(name: name) }
+    func updateProfile(name: String, avatarData: Data?, removeAvatar: Bool) async throws -> User {
+        if let avatarData { _ = try await service.uploadAvatar(data: avatarData) }
+        _ = try await service.updateProfile(name: name, removeAvatar: removeAvatar)
+        return try await service.currentUser()
+    }
     func changePassword(current: String, new: String) async throws { try await service.changePassword(current: current, new: new) }
     func message(_ error: Error, fallback: String) -> String { (error as? LocalizedError)?.errorDescription ?? fallback }
 }

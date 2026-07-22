@@ -5,7 +5,8 @@ protocol AuthenticationServicing {
     func loginWithGoogle(idToken: String) async throws -> AuthResponse
     func currentUser() async throws -> User
     func refreshSession() async throws -> AuthResponse
-    func updateProfile(name: String) async throws -> User
+    func updateProfile(name: String, removeAvatar: Bool) async throws -> User
+    func uploadAvatar(data: Data) async throws -> User
     func changePassword(current: String, new: String) async throws
     func membershipSummary() async throws -> MembershipSummary
     func requireOfflineDownloadAccess() async throws
@@ -66,10 +67,12 @@ final class AuthenticationService: AuthenticationServicing {
         return response
     }
 
-    func updateProfile(name: String) async throws -> User {
-        let request = try APIRequest.json(method: .patch, path: "/user/profile", body: ProfileUpdateRequest(name: name), requiresAuthentication: true)
+    func updateProfile(name: String, removeAvatar: Bool = false) async throws -> User {
+        let request = try APIRequest.json(method: .patch, path: "/user/profile", body: ProfileUpdateRequest(name: name, avatar: removeAvatar ? "" : nil), requiresAuthentication: true)
         return try await apiClient.send(request)
     }
+
+    func uploadAvatar(data: Data) async throws -> User { try await apiClient.uploadAvatar(data) }
 
     func changePassword(current: String, new: String) async throws {
         let request = try APIRequest.json(method: .post, path: "/user/change-password", body: ChangePasswordRequest(currentPassword: current, newPassword: new), requiresAuthentication: true)
