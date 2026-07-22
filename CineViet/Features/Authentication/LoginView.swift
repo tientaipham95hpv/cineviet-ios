@@ -1,4 +1,6 @@
 import SwiftUI
+import GoogleSignIn
+import UIKit
 
 struct LoginView: View {
     @ObservedObject var viewModel: AuthenticationViewModel
@@ -80,12 +82,63 @@ struct LoginView: View {
             .disabled(!viewModel.canSubmit)
             .opacity(viewModel.canSubmit ? 1 : 0.55)
             .accessibilityIdentifier("login-submit")
+
+            HStack(spacing: 12) {
+                Rectangle().fill(CineVietTheme.border).frame(height: 1)
+                Text("HOẶC").font(.caption.weight(.semibold)).foregroundStyle(CineVietTheme.textMuted)
+                Rectangle().fill(CineVietTheme.border).frame(height: 1)
+            }
+            .padding(.vertical, 4)
+
+            Button(action: signInWithGoogle) {
+                HStack(spacing: 10) {
+                    Image(systemName: "g.circle.fill")
+                        .font(.title3)
+                    Text("Tiếp tục với Google")
+                        .font(.headline.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+            }
+            .foregroundStyle(.primary)
+            .background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 12))
+            .overlay { RoundedRectangle(cornerRadius: 12).stroke(CineVietTheme.border, lineWidth: 0.8) }
+            .disabled(viewModel.isSubmitting)
+            .opacity(viewModel.isSubmitting ? 0.55 : 1)
+            .accessibilityIdentifier("login-google")
         }
     }
 
     private func submit() {
         focusedField = nil
         Task { await viewModel.login() }
+    }
+
+    private func signInWithGoogle() {
+        focusedField = nil
+        guard let presenter = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?.rootViewController else {
+            viewModel.reportGoogleLoginError("Không thể mở đăng nhập Google.")
+            return
+        }
+
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(
+            clientID: AppEnvironment.googleClientID,
+            serverClientID: AppEnvironment.googleServerClientID
+        )
+        GIDSignIn.sharedInstance.signIn(withPresenting: presenter) { result, error in
+            if error != nil {
+                // Cancellation is intentionally silent; Google reports it as an NSError.
+                return
+            }
+            guard let idToken = result?.user.idToken?.tokenString, !idToken.isEmpty else {
+                viewModel.reportGoogleLoginError("Không nhận được mã xác thực từ Google.")
+                return
+            }
+            Task { await viewModel.completeGoogleLogin(idToken: idToken) }
+        }
     }
 }
 

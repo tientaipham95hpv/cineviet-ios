@@ -100,6 +100,10 @@ final class AuthenticationViewModel: ObservableObject {
         }
     }
 
+    func reportGoogleLoginError(_ message: String) {
+        errorMessage = message
+    }
+
     func logout() {
         Task {
             do {

@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct CineVietApp: App {
@@ -8,6 +9,9 @@ struct CineVietApp: App {
     var body: some Scene {
         WindowGroup {
             AppAppearanceRoot(container: container)
+                .onOpenURL { url in
+                    GIDSignIn.sharedInstance.handle(url)
+                }
         }
     }
 }
