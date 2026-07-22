@@ -35,9 +35,10 @@ targets:
               - com.googleusercontent.apps.186784861581-mc6buqlfpbrprko3iqfp6fi0biqc3o3s
         GIDClientID: 186784861581-mc6buqlfpbrprko3iqfp6fi0biqc3o3s.apps.googleusercontent.com
         NSCameraUsageDescription: Dùng camera để quét mã QR đăng nhập TV.
-        UILaunchScreen: {}
         UIBackgroundModes:
           - audio
+          - remote-notification
+        UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -49,6 +50,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
     settings:
       base:
+        CODE_SIGN_ENTITLEMENTS: CineViet/Resources/CineViet.entitlements
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_EMIT_LOC_STRINGS: "YES"

@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class AppContainer: ObservableObject {
     @Published var currentUser: User? = nil
+    let deepLinkRouter = DeepLinkRouter()
     let tokenStore: TokenStore
     let settings: AppSettings
     let apiClient: APIClient

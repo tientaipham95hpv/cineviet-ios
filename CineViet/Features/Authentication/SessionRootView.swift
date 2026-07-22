@@ -24,6 +24,7 @@ struct SessionRootView: View {
             case .signedIn(let user):
                 MainTabView(
                     user: user,
+                    deepLinkRouter: container.deepLinkRouter,
                     movieService: container.movieService,
                     watchHistoryService: container.watchHistoryService,
                     libraryService: container.libraryService,

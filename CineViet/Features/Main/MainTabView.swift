@@ -3,6 +3,7 @@ import SwiftUI
 struct MainTabView: View {
     @Environment(\.colorScheme) private var colorScheme
     let user: User
+    @ObservedObject var deepLinkRouter: DeepLinkRouter
     let movieService: MovieServicing
     let watchHistoryService: WatchHistoryServicing
     let libraryService: LibraryServicing
@@ -13,6 +14,9 @@ struct MainTabView: View {
     let logout: () -> Void
     @State private var selectedTab = 0
     @State private var hidesFloatingNavigation = false
+    @State private var linkedMovie: Movie?
+    @State private var linkedRoomCode: String?
+    @State private var deepLinkError: String?
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -43,6 +47,25 @@ struct MainTabView: View {
             setFloatingNavigationHidden(false)
         }
         .tint(CineVietTheme.accent)
+        .sheet(item: $linkedMovie) { movie in
+            NavigationStack { MovieDetailView(movie: movie, movieService: movieService, watchHistoryService: watchHistoryService, libraryService: libraryService) }
+        }
+        .sheet(isPresented: Binding(get: { linkedRoomCode != nil }, set: { if !$0 { linkedRoomCode = nil } })) {
+            if let code = linkedRoomCode { WatchTogetherView(service: watchTogetherService, watchHistoryService: watchHistoryService, initialRoomCode: code) }
+        }
+        .alert("CineViet", isPresented: Binding(get: { deepLinkError != nil }, set: { if !$0 { deepLinkError = nil } })) { Button("OK") {} } message: { Text(deepLinkError ?? "") }
+        .task(id: deepLinkRouter.destination) { await openPendingDestination() }
+    }
+
+    private func openPendingDestination() async {
+        guard let destination = deepLinkRouter.consume() else { return }
+        switch destination {
+        case .movie(let slug):
+            do { linkedMovie = try await movieService.detail(idOrSlug: slug) }
+            catch { deepLinkError = "Không mở được phim từ liên kết." }
+        case .watchRoom(let code):
+            linkedRoomCode = code
+        }
     }
 
     private func setFloatingNavigationHidden(_ hidden: Bool, animated: Bool = true) {

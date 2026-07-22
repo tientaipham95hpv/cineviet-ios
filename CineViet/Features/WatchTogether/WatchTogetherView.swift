@@ -5,12 +5,20 @@ struct WatchTogetherLaunch: Identifiable { let id = UUID(); let movie: Movie; le
 struct WatchTogetherView: View {
     @ObservedObject var service: WatchTogetherService
     let watchHistoryService: WatchHistoryServicing
+    let initialRoomCode: String?
     @State private var rooms: [WatchRoom] = []
     @State private var loading = true
     @State private var error: String?
     @State private var code = ""
     @State private var busy = false
     @State private var launch: WatchTogetherLaunch?
+    @State private var joinedInitialRoom = false
+
+    init(service: WatchTogetherService, watchHistoryService: WatchHistoryServicing, initialRoomCode: String? = nil) {
+        self.service = service
+        self.watchHistoryService = watchHistoryService
+        self.initialRoomCode = initialRoomCode
+    }
 
     var body: some View {
         NavigationStack {
@@ -27,7 +35,12 @@ struct WatchTogetherView: View {
                 else { LazyVStack(spacing: 10) { ForEach(rooms) { room in Button { Task { await join(room.code) } } label: { HStack { Image(systemName: "person.2.fill").frame(width: 44, height: 44).background(CineVietTheme.accent.opacity(0.15), in: Circle()); VStack(alignment: .leading) { Text(room.movieTitle).font(.headline); Text("\(room.code) • \(room.memberCount)/\(room.maxMembers) người").font(.subheadline).foregroundStyle(.secondary) }; Spacer(); Image(systemName: "chevron.right") }.padding(12).background(CineVietTheme.panel, in: RoundedRectangle(cornerRadius: 14)) }.buttonStyle(.plain).accessibilityHint("Vào phòng xem chung") } } }
             }.frame(maxWidth: 760, alignment: .leading).padding(.horizontal, 18).padding(.top, 22).padding(.bottom, 100) }
             .background(CineVietTheme.background).refreshable { await load() }
-        }.task { await load() }
+        }.task {
+            await load()
+            if !joinedInitialRoom, let initialRoomCode, !initialRoomCode.isEmpty {
+                joinedInitialRoom = true; code = initialRoomCode; await join(initialRoomCode)
+            }
+        }
         .fullScreenCover(item: $launch) { value in PlayerView(movie: value.movie, server: value.server, episode: value.episode, watchHistoryService: watchHistoryService, watchTogetherService: service).interactiveDismissDisabled() }
         .alert("Xem chung", isPresented: Binding(get: { error != nil && !loading && rooms.count > 0 }, set: { if !$0 { error = nil } })) { Button("OK") {} } message: { Text(error ?? "") }
         .overlay { if busy { ZStack { Color.black.opacity(0.3).ignoresSafeArea(); ProgressView("Đang vào phòng…").padding(18).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14)) } } }

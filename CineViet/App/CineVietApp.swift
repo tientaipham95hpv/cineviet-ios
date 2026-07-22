@@ -10,7 +10,10 @@ struct CineVietApp: App {
         WindowGroup {
             AppAppearanceRoot(container: container)
                 .onOpenURL { url in
-                    GIDSignIn.sharedInstance.handle(url)
+                    if !GIDSignIn.sharedInstance.handle(url) { container.deepLinkRouter.handle(url) }
+                }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { container.deepLinkRouter.handle(url) }
                 }
         }
     }
