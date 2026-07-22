@@ -86,6 +86,7 @@ final class PlayerViewModel: ObservableObject {
     private var noticeTask: Task<Void, Never>?
     private var autoNextTask: Task<Void, Never>?
     private var introSkipTask: Task<Void, Never>?
+    private var sourceTimeoutTask: Task<Void, Never>?
     private var skippedIntroIDs = Set<String>()
     private var embeddedAudioGroup: AVMediaSelectionGroup?
     private var embeddedSubtitleGroup: AVMediaSelectionGroup?
@@ -347,6 +348,16 @@ final class PlayerViewModel: ObservableObject {
         observe(item: item, candidate: candidate)
         player.replaceCurrentItem(with: item)
         player.play()
+        scheduleSourceTimeout(for: item)
+    }
+
+    private func scheduleSourceTimeout(for item: AVPlayerItem) {
+        sourceTimeoutTask?.cancel()
+        sourceTimeoutTask = Task { [weak self, weak item] in
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard !Task.isCancelled, let self, let item, self.player.currentItem === item, item.status != .readyToPlay else { return }
+            self.failCurrentCandidate("Máy chủ phản hồi quá chậm.")
+        }
     }
 
     private func observe(item: AVPlayerItem, candidate: PlaybackCandidate) {
@@ -355,6 +366,7 @@ final class PlayerViewModel: ObservableObject {
                 guard let self, self.player.currentItem === item else { return }
                 switch item.status {
                 case .readyToPlay:
+                    self.sourceTimeoutTask?.cancel()
                     self.isLoading = false; self.errorMessage = nil
                     self.discoverMediaSelections(for: item, episode: candidate.episode)
                     self.resumePlaybackIfNeeded(for: candidate)
@@ -371,6 +383,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func failCurrentCandidate(_ reason: String?) {
         guard candidateIndex < candidateQueue.count else { return }
+        sourceTimeoutTask?.cancel()
         let position = player.currentTime().seconds
         if position.isFinite && position > 3 { pendingResumePosition = position }
         shouldFetchRemoteResume = false
@@ -386,6 +399,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func clearCurrentItemState() {
+        sourceTimeoutTask?.cancel()
         itemObservation?.invalidate(); itemObservation = nil
         if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver); self.itemFailureObserver = nil }
         subtitleTask?.cancel(); mediaSelectionTask?.cancel(); overlaySubtitles = [:]
@@ -637,7 +651,7 @@ final class PlayerViewModel: ObservableObject {
         let stored = defaults.string(forKey: audioPreferenceKey)
         return episode.audioSources.contains(where: { $0.key == stored && Self.normalizedURL($0.url) != nil }) ? stored : Self.defaultAudioKey(for: episode)
     }
-    private func cancelAsyncWork() { subtitleTask?.cancel(); mediaSelectionTask?.cancel(); resumeTask?.cancel(); noticeTask?.cancel(); autoNextTask?.cancel() }
+    private func cancelAsyncWork() { subtitleTask?.cancel(); mediaSelectionTask?.cancel(); resumeTask?.cancel(); noticeTask?.cancel(); autoNextTask?.cancel(); sourceTimeoutTask?.cancel() }
     private func announce(_ message: String) { UIAccessibility.post(notification: .announcement, argument: message) }
     nonisolated private static func loadSubtitleData(from url: URL) async throws -> Data {
         if url.isFileURL { return try await Task.detached { try Data(contentsOf: url) }.value }
