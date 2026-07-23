@@ -39,11 +39,11 @@ struct EditProfileView: View {
         do {
             guard let source = try await selectedPhoto.loadTransferable(type: Data.self), let optimized = AvatarImageProcessor.optimize(source) else { throw AvatarImageError.invalidImage }
             avatarData = optimized; removeAvatar = false; error = nil
-        } catch { avatarData = nil; error = "Không thể xử lý ảnh đã chọn. Vui lòng thử ảnh khác." }
+        } catch { avatarData = nil; self.error = "Không thể xử lý ảnh đã chọn. Vui lòng thử ảnh khác." }
     }
     private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSave: Bool { !cleanName.isEmpty && !busy && (cleanName != (user.name ?? user.username ?? "") || avatarData != nil || removeAvatar) }
-    private func save() async { guard canSave else { return }; busy = true; defer { busy = false }; do { let updated = try await model.updateProfile(name: cleanName, avatarData: avatarData, removeAvatar: removeAvatar); updateUser(updated); dismiss() } catch { error = model.message(error, fallback: "Không cập nhật được hồ sơ.") } }
+    private func save() async { guard canSave else { return }; busy = true; defer { busy = false }; do { let updated = try await model.updateProfile(name: cleanName, avatarData: avatarData, removeAvatar: removeAvatar); updateUser(updated); dismiss() } catch { self.error = model.message(error, fallback: "Không cập nhật được hồ sơ.") } }
 }
 
 private enum AvatarImageError: Error { case invalidImage }
@@ -74,5 +74,5 @@ struct ChangePasswordView: View {
     @ObservedObject var model: AccountViewModel; @State private var current = ""; @State private var next = ""; @State private var confirmation = ""; @State private var busy = false; @State private var error: String?; @State private var succeeded = false
     var body: some View { Form { Section("Mật khẩu") { SecureField("Mật khẩu hiện tại", text: $current); SecureField("Mật khẩu mới", text: $next); SecureField("Nhập lại mật khẩu mới", text: $confirmation) }; if let error { Section { Text(error).foregroundStyle(.red) } }; Section { Button { Task { await save() } } label: { HStack { Spacer(); if busy { ProgressView() }; Text(busy ? "Đang lưu…" : "Đổi mật khẩu").bold(); Spacer() } }.disabled(!valid || busy || succeeded) } }.scrollContentBackground(.hidden).background(CineVietTheme.background).navigationTitle("Đổi mật khẩu") }
     private var valid: Bool { !current.isEmpty && next.count >= 6 && next == confirmation }
-    private func save() async { busy = true; defer { busy = false }; do { try await model.changePassword(current: current, new: next); succeeded = true } catch { error = model.message(error, fallback: "Không đổi được mật khẩu.") } }
+    private func save() async { busy = true; defer { busy = false }; do { try await model.changePassword(current: current, new: next); succeeded = true } catch { self.error = model.message(error, fallback: "Không đổi được mật khẩu.") } }
 }

@@ -34,11 +34,12 @@ struct AccountView: View {
     let notificationService: NotificationServicing
     let watchHistoryService: WatchHistoryServicing
     let watchTogetherService: WatchTogetherService
+    private let service: AuthenticationServicing
     @StateObject private var model: AccountViewModel
     @State private var confirmsLogout = false
 
     init(user: User, service: AuthenticationServicing, notificationService: NotificationServicing, watchHistoryService: WatchHistoryServicing, watchTogetherService: WatchTogetherService, updateUser: @escaping (User) -> Void, logout: @escaping () -> Void) {
-        self.user = user; self.notificationService = notificationService; self.watchHistoryService = watchHistoryService; self.watchTogetherService = watchTogetherService; self.updateUser = updateUser; self.logout = logout
+        self.user = user; self.service = service; self.notificationService = notificationService; self.watchHistoryService = watchHistoryService; self.watchTogetherService = watchTogetherService; self.updateUser = updateUser; self.logout = logout
         _model = StateObject(wrappedValue: AccountViewModel(service: service))
     }
 
