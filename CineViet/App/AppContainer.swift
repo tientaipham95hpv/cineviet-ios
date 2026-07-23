@@ -13,6 +13,7 @@ final class AppContainer: ObservableObject {
     let watchHistoryService: WatchHistoryServicing
     let libraryService: LibraryServicing
     let watchTogetherService: WatchTogetherService
+    let pushNotificationService: PushNotificationServicing
 
     init(
         tokenStore: TokenStore,
@@ -23,7 +24,8 @@ final class AppContainer: ObservableObject {
         movieService: MovieServicing,
         watchHistoryService: WatchHistoryServicing,
         libraryService: LibraryServicing,
-        watchTogetherService: WatchTogetherService
+        watchTogetherService: WatchTogetherService,
+        pushNotificationService: PushNotificationServicing
     ) {
         self.tokenStore = tokenStore
         self.settings = settings
@@ -34,6 +36,7 @@ final class AppContainer: ObservableObject {
         self.watchHistoryService = watchHistoryService
         self.libraryService = libraryService
         self.watchTogetherService = watchTogetherService
+        self.pushNotificationService = pushNotificationService
     }
 
     static let live: AppContainer = {
@@ -49,7 +52,8 @@ final class AppContainer: ObservableObject {
             movieService: MovieService(apiClient: apiClient),
             watchHistoryService: WatchHistoryService(apiClient: apiClient),
             libraryService: LibraryService(apiClient: apiClient),
-            watchTogetherService: WatchTogetherService(apiClient: apiClient)
+            watchTogetherService: WatchTogetherService(apiClient: apiClient),
+            pushNotificationService: PushNotificationService(apiClient: apiClient)
         )
     }()
 }

@@ -1,16 +1,36 @@
 import SwiftUI
 import UIKit
 import UserNotifications
+#if canImport(FirebaseCore)
+import FirebaseCore
+#endif
+#if canImport(FirebaseMessaging)
+import FirebaseMessaging
+#endif
 
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     static var orientationMask: UIInterfaceOrientationMask = .portrait
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        #if canImport(FirebaseCore) && canImport(FirebaseMessaging)
+        if FirebaseApp.app() == nil, Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
+            FirebaseApp.configure()
+            Messaging.messaging().delegate = self
+        }
+        #endif
         if let payload = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             Task { @MainActor in AppContainer.live.deepLinkRouter.handle(userInfo: payload) }
         }
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { await AppContainer.live.pushNotificationService.didRegister(deviceToken: deviceToken) }
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        AppContainer.live.pushNotificationService.didFailToRegister(error)
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .sound, .badge] }
@@ -28,6 +48,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         Task { @MainActor in OfflineDownloadManager.shared.handleBackgroundEvents(completionHandler: completionHandler) }
     }
 }
+
+#if canImport(FirebaseMessaging)
+extension AppDelegate: MessagingDelegate {
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        guard let fcmToken else { return }
+        Task { await AppContainer.live.pushNotificationService.didReceiveMessagingToken(fcmToken) }
+    }
+}
+#endif
 
 @MainActor
 enum OrientationManager {

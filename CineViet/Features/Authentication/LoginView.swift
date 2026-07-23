@@ -5,6 +5,9 @@ import UIKit
 struct LoginView: View {
     @ObservedObject var viewModel: AuthenticationViewModel
     @FocusState private var focusedField: Field?
+    @State private var authSheet: AuthSheet?
+
+    fileprivate enum AuthSheet: String, Identifiable { case register, forgot; var id: String { rawValue } }
 
     enum Field {
         case email
@@ -23,6 +26,7 @@ struct LoginView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityIdentifier("authentication-error")
                 }
+                if let success = viewModel.successMessage { Text(success).foregroundStyle(.green).accessibilityIdentifier("authentication-success") }
             }
             .frame(maxWidth: 520)
             .padding(.horizontal, 24)
@@ -31,6 +35,7 @@ struct LoginView: View {
         }
         .background(CineVietTheme.background.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
+        .sheet(item: $authSheet) { mode in AuthFlowSheet(mode: mode, viewModel: viewModel) }
     }
 
     private var header: some View {
@@ -82,6 +87,12 @@ struct LoginView: View {
             .disabled(!viewModel.canSubmit)
             .opacity(viewModel.canSubmit ? 1 : 0.55)
             .accessibilityIdentifier("login-submit")
+
+            HStack {
+                Button("Quên mật khẩu?") { authSheet = .forgot }
+                Spacer()
+                Button("Tạo tài khoản") { authSheet = .register }
+            }.font(.subheadline.weight(.semibold))
 
             HStack(spacing: 12) {
                 Rectangle().fill(CineVietTheme.border).frame(height: 1)
@@ -139,6 +150,40 @@ struct LoginView: View {
             }
             Task { await viewModel.completeGoogleLogin(idToken: idToken) }
         }
+    }
+}
+
+private struct AuthFlowSheet: View {
+    let mode: LoginView.AuthSheet
+    @ObservedObject var viewModel: AuthenticationViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var showReset = false
+    var body: some View {
+        NavigationStack { Form {
+            if mode == .register { TextField("Họ tên", text: $viewModel.name).textContentType(.name) }
+            TextField("Email", text: $viewModel.email).keyboardType(.emailAddress).textInputAutocapitalization(.never)
+            if mode == .register || showReset {
+                if showReset {
+                    TextField("Token trong liên kết email", text: $viewModel.resetToken)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Mã xác nhận 6 số", text: $viewModel.resetCode)
+                        .keyboardType(.numberPad)
+                }
+                SecureField("Mật khẩu mới", text: $viewModel.password)
+                SecureField("Xác nhận mật khẩu", text: $viewModel.confirmation)
+            }
+            Button(mode == .register ? "Đăng ký" : (showReset ? "Đặt lại mật khẩu" : "Gửi hướng dẫn")) {
+                Task {
+                    if mode == .register { await viewModel.register() }
+                    else if showReset { await viewModel.resetPassword() }
+                    else { await viewModel.requestPasswordReset() }
+                }
+            }.disabled(viewModel.isSubmitting)
+            if mode == .forgot { Toggle("Tôi đã có mã xác nhận", isOn: $showReset) }
+            if let message = viewModel.errorMessage { Text(message).foregroundStyle(.red) }
+            if let message = viewModel.successMessage { Text(message).foregroundStyle(.green) }
+        }.navigationTitle(mode == .register ? "Tạo tài khoản" : "Khôi phục mật khẩu").toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } } }
     }
 }
 

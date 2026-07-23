@@ -97,6 +97,7 @@ final class PlayerViewModel: ObservableObject {
     private var lastSavedPosition: Double = 0
     private var started = false
     private let offlineURL: URL?
+    private let nowPlaying = NowPlayingController()
 
     private var serverPreferenceKey: String { "cineviet.player.server.\(movie.id)" }
     private var episodePreferenceKey: String { "cineviet.player.episode.\(movie.id)" }
@@ -149,6 +150,8 @@ final class PlayerViewModel: ObservableObject {
         guard !started else { return }
         started = true
         configureAudioSession()
+        nowPlaying.activate(player: player, title: movie.title, subtitle: currentEpisode.name, previous: { [weak self] in self?.playPreviousEpisode() }, next: { [weak self] in self?.playNextEpisode() })
+        AppTelemetry.shared.event("playback_start", parameters: ["movie_id": String(movie.id)])
         installObservers()
         rebuildQueueAndLoad(preserving: nil, includeEquivalentServers: true)
         loadIntroSkip()
@@ -161,6 +164,7 @@ final class PlayerViewModel: ObservableObject {
         cancelAsyncWork()
         removePlayerObservers()
         deactivateAudioSession()
+        nowPlaying.deactivate()
         introSkipTask?.cancel()
     }
 
@@ -417,6 +421,7 @@ final class PlayerViewModel: ObservableObject {
             self.playbackDuration = duration.isFinite && duration > 0 ? duration : 1
             self.isPlaying = self.player.rate > 0
             self.updateIntroSkip()
+            self.nowPlaying.update(title: self.movie.title, subtitle: self.currentEpisode.name, position: self.playbackPosition, duration: self.playbackDuration, rate: self.player.rate)
         }
         historyObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 10, preferredTimescale: 1), queue: .main) { [weak self] _ in self?.saveProgress(force: false) }
         audioInterruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(), queue: .main) { [weak self] note in

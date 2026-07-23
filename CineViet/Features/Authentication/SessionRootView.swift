@@ -9,7 +9,8 @@ struct SessionRootView: View {
         _viewModel = StateObject(
             wrappedValue: AuthenticationViewModel(
                 authenticationService: container.authenticationService,
-                tokenStore: container.tokenStore
+                tokenStore: container.tokenStore,
+                pushNotificationService: container.pushNotificationService
             )
         )
     }
@@ -35,6 +36,7 @@ struct SessionRootView: View {
                     logout: viewModel.logout
                 )
                 .onAppear { container.currentUser = user }
+                .task { await container.pushNotificationService.requestAuthorization() }
                 .onChange(of: user) { container.currentUser = $0 }
             }
         }

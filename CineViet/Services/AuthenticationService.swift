@@ -2,6 +2,9 @@ import Foundation
 
 protocol AuthenticationServicing {
     func login(email: String, password: String) async throws -> AuthResponse
+    func register(name: String, email: String, password: String) async throws -> AuthResponse
+    func forgotPassword(email: String) async throws
+    func resetPassword(token: String, code: String, password: String) async throws -> AuthResponse
     func loginWithGoogle(idToken: String) async throws -> AuthResponse
     func currentUser() async throws -> User
     func refreshSession() async throws -> AuthResponse
@@ -32,6 +35,26 @@ final class AuthenticationService: AuthenticationServicing {
         let body = LoginRequest(email: email, password: password, mobileKey: AppEnvironment.mobileKey)
         let request = try APIRequest.json(method: .post, path: "/auth/login", body: body)
         let response: AuthResponse = try await apiClient.send(request)
+        try tokenStore.save(try response.tokens())
+        if let user = response.user { cacheOfflineIdentity(user) }
+        return response
+    }
+
+    func register(name: String, email: String, password: String) async throws -> AuthResponse {
+        let body = RegisterRequest(name: name, email: email, password: password, passwordConfirmation: password, mobileKey: AppEnvironment.mobileKey)
+        let response: AuthResponse = try await apiClient.send(try APIRequest.json(method: .post, path: "/auth/register", body: body))
+        try tokenStore.save(try response.tokens())
+        if let user = response.user { cacheOfflineIdentity(user) }
+        return response
+    }
+
+    func forgotPassword(email: String) async throws {
+        try await apiClient.send(try APIRequest.json(method: .post, path: "/auth/forgot-password", body: ForgotPasswordRequest(email: email)))
+    }
+
+    func resetPassword(token: String, code: String, password: String) async throws -> AuthResponse {
+        let body = ResetPasswordRequest(token: token, code: code, password: password)
+        let response: AuthResponse = try await apiClient.send(try APIRequest.json(method: .post, path: "/auth/reset-password", body: body))
         try tokenStore.save(try response.tokens())
         if let user = response.user { cacheOfflineIdentity(user) }
         return response

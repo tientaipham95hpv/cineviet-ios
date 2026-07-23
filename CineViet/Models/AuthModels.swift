@@ -37,6 +37,27 @@ struct LoginRequest: Encodable {
     let mobileKey: String
 }
 
+struct RegisterRequest: Encodable {
+    let name: String
+    let email: String
+    let password: String
+    let passwordConfirmation: String
+    let mobileKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case name, email, password
+        case passwordConfirmation = "password_confirmation"
+        case mobileKey = "mobile_key"
+    }
+}
+
+struct ForgotPasswordRequest: Encodable { let email: String }
+struct ResetPasswordRequest: Encodable {
+    let token: String
+    let code: String
+    let password: String
+}
+
 struct GoogleLoginRequest: Encodable {
     let idToken: String
     let remember: Bool
