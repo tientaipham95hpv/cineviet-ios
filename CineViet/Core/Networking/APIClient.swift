@@ -49,7 +49,10 @@ actor APIClient {
         body.append(Data("Content-Disposition: form-data; name=\"avatar\"; filename=\"\(filename)\"\r\n".utf8))
         body.append(Data("Content-Type: image/jpeg\r\n\r\n".utf8)); body.append(data); body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         var request = URLRequest(url: baseURL.appendingPathComponent("user/avatar")); request.httpMethod = HTTPMethod.post.rawValue; request.httpBody = body
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type"); request.setValue(AppEnvironment.mobileKey, forHTTPHeaderField: "X-Mobile-Key"); request.setValue("Bearer \(try tokenStore.load()?.accessToken ?? \"\")", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppEnvironment.mobileKey, forHTTPHeaderField: "X-Mobile-Key")
+        let accessToken = try tokenStore.load()?.accessToken ?? ""
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request); guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw NetworkError.invalidResponse }
         do { return try JSONDecoder.cineViet.decode(User.self, from: data) } catch { return try JSONDecoder.cineViet.decode(CurrentUserResponse.self, from: data).user }
     }
